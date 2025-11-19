@@ -19,6 +19,7 @@ export default {
   				'system-ui',
   				'sans-serif'
   			],
+        orbitron: ['"Orbitron"', 'sans-serif'],
   			mono: [
   				'JetBrains Mono',
   				'Fira Code',
@@ -91,6 +92,18 @@ export default {
   			sm: 'calc(var(--radius) - 4px)'
   		},
   		colors: {
+        void: {
+          950: 'hsl(0, 0%, 4%)',
+          900: 'hsl(0, 0%, 6%)',
+          800: 'hsl(0, 0%, 9%)',
+          700: 'hsl(0, 0%, 12%)',
+          600: 'hsl(0, 0%, 18%)',
+        },
+        blood: {
+          600: 'hsl(0, 84%, 50%)',
+          500: 'hsl(0, 72%, 51%)',
+          400: 'hsl(0, 80%, 60%)',
+        },
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
   			muted: {
@@ -147,6 +160,7 @@ export default {
   			glow: '0 0 20px -5px rgba(99, 102, 241, 0.4)',
   			'glow-lg': '0 0 40px -10px rgba(99, 102, 241, 0.3)',
   			primary: '0 0 20px -5px hsl(var(--primary) / 0.4)',
+        'blood-glow': '0 0 20px -5px hsl(0, 72%, 51% / 0.6)',
   			glass: '0 8px 32px 0 rgba(31, 38, 135, 0.37)'
   		},
   		keyframes: {
@@ -234,6 +248,7 @@ export default {
   		backgroundImage: {
   			'gradient-rainbow': 'linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #f5576c 75%, #4facfe 100%)',
   			'gradient-primary': 'linear-gradient(135deg, #667eea, #764ba2)',
+        'gradient-blood': 'radial-gradient(ellipse 80% 50% at 50% -20%, hsl(0, 72%, 51% / 0.3), transparent)',
   			'gradient-mesh': 'radial-gradient(at 40% 20%, hsla(28,100%,74%,1) 0px, transparent 50%), radial-gradient(at 80% 0%, hsla(189,100%,56%,1) 0px, transparent 50%), radial-gradient(at 0% 50%, hsla(355,100%,93%,1) 0px, transparent 50%), radial-gradient(at 80% 50%, hsla(340,100%,76%,1) 0px, transparent 50%), radial-gradient(at 0% 100%, hsla(22,100%,77%,1) 0px, transparent 50%), radial-gradient(at 80% 100%, hsla(242,100%,70%,1) 0px, transparent 50%), radial-gradient(at 0% 0%, hsla(343,100%,76%,1) 0px, transparent 50%)'
   		}
   	}

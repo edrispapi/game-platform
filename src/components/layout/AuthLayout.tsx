@@ -1,15 +1,14 @@
-'use client';
 import React, { useCallback } from "react";
 import Particles from "react-particles";
 import type { Engine } from "tsparticles-engine";
-import { loadSlim } from "tsparticles-slim";
+import { loadFull } from "tsparticles";
 import { motion } from "framer-motion";
 type AuthLayoutProps = {
   children: React.ReactNode;
 };
 export function AuthLayout({ children }: AuthLayoutProps): JSX.Element {
   const particlesInit = useCallback(async (engine: Engine) => {
-    await loadSlim(engine);
+    await loadFull(engine);
   }, []);
   return (
     <div className="min-h-screen flex items-center justify-center bg-void-900 relative overflow-hidden p-4">

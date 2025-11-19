@@ -1,31 +1,59 @@
 import '@/lib/errorReporter';
 import { enableMapSet } from "immer";
 enableMapSet();
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import {
-  createBrowserRouter,
-  RouterProvider,
-} from "react-router-dom";
+import React, { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { createBrowserRouter, RouterProvider, Outlet } from "react-router-dom";
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { RouteErrorBoundary } from '@/components/RouteErrorBoundary';
-import '@/index.css'
-import { HomePage } from '@/pages/HomePage'
-
+import '@/index.css';
+// Layouts
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
+// Pages
+import { HomePage } from '@/pages/HomePage';
+import { LoginPage } from '@/pages/LoginPage';
+import { RegisterPage } from '@/pages/RegisterPage';
+import { StorePage } from '@/pages/StorePage';
+import { LibraryPage } from '@/pages/LibraryPage';
+import { GameDetailPage } from '@/pages/GameDetailPage';
+import { ProfilePage } from '@/pages/ProfilePage';
+import { Toaster } from '@/components/ui/sonner';
+// Set dark theme by default
+document.documentElement.classList.add('dark');
 const router = createBrowserRouter([
   {
     path: "/",
     element: <HomePage />,
     errorElement: <RouteErrorBoundary />,
   },
+  {
+    path: "/login",
+    element: <LoginPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: "/register",
+    element: <RegisterPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    element: <DashboardLayout />,
+    errorElement: <RouteErrorBoundary />,
+    children: [
+      { path: "/store", element: <StorePage /> },
+      { path: "/library", element: <LibraryPage /> },
+      { path: "/game/:slug", element: <GameDetailPage /> },
+      { path: "/profile", element: <ProfilePage /> },
+    ],
+  },
 ]);
-
-// Do not touch this code
-createRoot(document.getElementById('root')!).render(
+const rootElement = document.getElementById('root');
+if (!rootElement) throw new Error("Failed to find the root element");
+createRoot(rootElement).render(
   <StrictMode>
     <ErrorBoundary>
       <RouterProvider router={router} />
+      <Toaster theme="dark" richColors closeButton />
     </ErrorBoundary>
   </StrictMode>,
-)
-   
+);
