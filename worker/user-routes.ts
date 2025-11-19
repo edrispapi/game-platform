@@ -30,6 +30,16 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     }
     return ok(c, await user.getState());
   });
+  app.get('/api/user/:username', async (c) => {
+    const username = c.req.param('username');
+    await UserEntity.ensureSeed(c.env);
+    const { items } = await UserEntity.list(c.env);
+    const user = items.find(u => u.username.toLowerCase() === username.toLowerCase());
+    if (!user) {
+      return notFound(c, 'User not found');
+    }
+    return ok(c, user);
+  });
   app.post('/api/profile/settings', async (c) => {
     const settings = (await c.req.json()) as UserProfile['settings'];
     if (!settings) return bad(c, 'Invalid settings payload');

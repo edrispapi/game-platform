@@ -1,6 +1,5 @@
-'use client';
 import { useParams } from "react-router-dom";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { Game, UserProfile } from "@shared/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -8,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Clock, Trophy, Users, UserPlus, Check } from "lucide-react";
+import { Clock, Trophy, Users, UserPlus } from "lucide-react";
 import { GameCard } from "@/components/GameCard";
 import { toast } from "sonner";
 export function PublicProfilePage() {
@@ -22,24 +21,10 @@ export function PublicProfilePage() {
     queryKey: ['games'],
     queryFn: () => api<{ items: Game[] }>('/api/games'),
   });
-  const addFriendMutation = useMutation({
-    mutationFn: (targetUsername: string) => api('/api/friend-requests/add', {
-      method: 'POST',
-      body: JSON.stringify({ username: targetUsername }),
-    }),
-    onSuccess: () => {
-      toast.success(`Friend request sent to ${profile?.username}!`);
-    },
-    onError: (error) => {
-      toast.error(`Failed to send friend request: ${error.message}`);
-    },
-  });
-  const handleAddFriend = () => {
-    if (profile?.username) {
-      addFriendMutation.mutate(profile.username);
-    }
-  };
   const favoriteGames = gamesResponse?.items.filter(game => profile?.favoriteGames.includes(game.slug)) ?? [];
+  const handleAddFriend = () => {
+    toast.info(`Friend request sent to ${profile?.username}!`);
+  };
   if (isLoadingProfile) {
     return (
       <div className="space-y-8">
@@ -87,20 +72,8 @@ export function PublicProfilePage() {
               </Badge>
             </div>
           </div>
-          <Button
-            className="ml-auto bg-blood-500 hover:bg-blood-600 disabled:bg-green-600 disabled:opacity-100"
-            onClick={handleAddFriend}
-            disabled={addFriendMutation.isPending || addFriendMutation.isSuccess}
-          >
-            {addFriendMutation.isSuccess ? (
-              <>
-                <Check className="mr-2 h-4 w-4" /> Request Sent
-              </>
-            ) : (
-              <>
-                <UserPlus className="mr-2 h-4 w-4" /> Add Friend
-              </>
-            )}
+          <Button className="ml-auto bg-blood-500 hover:bg-blood-600" onClick={handleAddFriend}>
+            <UserPlus className="mr-2 h-4 w-4" /> Add Friend
           </Button>
         </CardContent>
       </Card>

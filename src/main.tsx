@@ -28,6 +28,7 @@ import { ChatPage } from '@/pages/ChatPage';
 import { AboutPage } from '@/pages/AboutPage';
 import { ContactPage } from '@/pages/ContactPage';
 import { AchievementsPage } from '@/pages/AchievementsPage';
+import { PublicProfilePage } from '@/pages/PublicProfilePage';
 import { Toaster } from '@/components/ui/sonner';
 // Set dark theme by default
 document.documentElement.classList.add('dark');
@@ -66,6 +67,7 @@ const router = createBrowserRouter([
       { path: "/game/:slug", element: <GameDetailPage /> },
       { path: "/profile", element: <ProfilePage /> },
       { path: "/profile/achievements", element: <AchievementsPage /> },
+      { path: "/user/:username", element: <PublicProfilePage /> },
       { path: "/friends", element: <FriendsPage /> },
       { path: "/friends/chat/:id", element: <ChatPage /> },
       { path: "/settings", element: <SettingsPage /> },
