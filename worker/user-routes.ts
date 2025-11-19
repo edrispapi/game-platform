@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from './core-utils';
-import { GameEntity, UserEntity, FriendEntity, OrderEntity, NotificationEntity } from "./entities";
+import { GameEntity, UserEntity, FriendEntity, OrderEntity, NotificationEntity, FriendRequestEntity } from "./entities";
 import { ok, notFound, bad } from './core-utils';
 import { Order, UserProfile } from "@shared/types";
 export function userRoutes(app: Hono<{ Bindings: Env }>) {
@@ -45,6 +45,33 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     await FriendEntity.ensureSeed(c.env);
     const page = await FriendEntity.list(c.env);
     return ok(c, page);
+  });
+  // FRIEND REQUESTS
+  app.get('/api/friend-requests', async (c) => {
+    await FriendRequestEntity.ensureSeed(c.env);
+    const { items } = await FriendRequestEntity.list(c.env);
+    // Filter for pending requests
+    const pending = items.filter(req => req.status === 'pending');
+    return ok(c, { items: pending });
+  });
+  app.post('/api/friend-requests/:id/accept', async (c) => {
+    const id = c.req.param('id');
+    const req = new FriendRequestEntity(c.env, id);
+    if (!(await req.exists())) {
+      return notFound(c, 'Friend request not found');
+    }
+    await req.patch({ status: 'accepted' });
+    // In a real app, you would also add the user to the friends list
+    return ok(c, { success: true });
+  });
+  app.post('/api/friend-requests/:id/reject', async (c) => {
+    const id = c.req.param('id');
+    const req = new FriendRequestEntity(c.env, id);
+    if (!(await req.exists())) {
+      return notFound(c, 'Friend request not found');
+    }
+    await req.patch({ status: 'rejected' });
+    return ok(c, { success: true });
   });
   // ORDERS
   app.get('/api/orders', async (c) => {

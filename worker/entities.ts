@@ -1,6 +1,6 @@
 import { IndexedEntity } from "./core-utils";
-import type { Game, UserProfile, Friend, Order, Notification } from "@shared/types";
-import { MOCK_GAMES, MOCK_USER_PROFILES, MOCK_FRIENDS, MOCK_NOTIFICATIONS } from "@shared/mock-data";
+import type { Game, UserProfile, Friend, Order, Notification, FriendRequest } from "@shared/types";
+import { MOCK_GAMES, MOCK_USER_PROFILES, MOCK_FRIENDS, MOCK_NOTIFICATIONS, MOCK_FRIEND_REQUESTS } from "@shared/mock-data";
 // GAME ENTITY: one DO instance per game
 export class GameEntity extends IndexedEntity<Game> {
   static readonly entityName = "game";
@@ -83,4 +83,17 @@ export class NotificationEntity extends IndexedEntity<Notification> {
     createdAt: 0,
   };
   static seedData = MOCK_NOTIFICATIONS;
+}
+// FRIEND REQUEST ENTITY
+export class FriendRequestEntity extends IndexedEntity<FriendRequest> {
+  static readonly entityName = "friendRequest";
+  static readonly indexName = "friendRequests";
+  static readonly initialState: FriendRequest = {
+    id: "",
+    fromUserId: "",
+    fromUsername: "",
+    fromUserAvatar: "",
+    status: "pending",
+  };
+  static seedData = MOCK_FRIEND_REQUESTS;
 }

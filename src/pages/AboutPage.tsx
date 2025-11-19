@@ -1,4 +1,3 @@
-'use client';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Gamepad2, Users, Globe } from "lucide-react";
 import { motion } from "framer-motion";

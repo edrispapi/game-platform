@@ -3,10 +3,76 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UserPlus, Search } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
-import { Friend, Game } from "@shared/types";
+import { Friend, Game, FriendRequest } from "@shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
+import { Link } from "react-router-dom";
+function FriendRequestsTab() {
+  const queryClient = useQueryClient();
+  const { data: requestsResponse, isLoading, isError } = useQuery({
+    queryKey: ['friend-requests'],
+    queryFn: () => api<{ items: FriendRequest[] }>('/api/friend-requests'),
+  });
+  const handleResponse = (requestId: string, action: 'accept' | 'reject') => {
+    return api(`/api/friend-requests/${requestId}/${action}`, { method: 'POST' });
+  };
+  const mutation = useMutation({
+    mutationFn: ({ requestId, action }: { requestId: string, action: 'accept' | 'reject' }) => handleResponse(requestId, action),
+    onSuccess: (_, variables) => {
+      toast.success(`Friend request ${variables.action}ed.`);
+      queryClient.invalidateQueries({ queryKey: ['friend-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['friends'] }); // Invalidate friends list too
+    },
+    onError: (_, variables) => {
+      toast.error(`Failed to ${variables.action} friend request.`);
+    },
+  });
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        {Array.from({ length: 2 }).map((_, i) => (
+          <div key={i} className="flex items-center justify-between p-4 bg-void-800 rounded-lg border border-void-700">
+            <div className="flex items-center gap-4">
+              <Skeleton className="h-12 w-12 rounded-full" />
+              <Skeleton className="h-5 w-32" />
+            </div>
+            <div className="flex gap-2">
+              <Skeleton className="h-10 w-24" />
+              <Skeleton className="h-10 w-24" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (isError) {
+    return <p className="text-center text-red-500">Failed to load friend requests.</p>;
+  }
+  const requests = requestsResponse?.items ?? [];
+  return (
+    <div className="space-y-4">
+      {requests.length > 0 ? requests.map(req => (
+        <div key={req.id} className="flex items-center justify-between p-4 bg-void-800 rounded-lg border border-void-700">
+          <div className="flex items-center gap-4">
+            <Avatar className="h-12 w-12">
+              <AvatarImage src={req.fromUserAvatar} />
+              <AvatarFallback>{req.fromUsername.substring(0, 2)}</AvatarFallback>
+            </Avatar>
+            <p className="font-bold text-lg">{req.fromUsername}</p>
+          </div>
+          <div className="flex gap-2">
+            <Button className="bg-green-600 hover:bg-green-700" onClick={() => mutation.mutate({ requestId: req.id, action: 'accept' })}>Accept</Button>
+            <Button variant="destructive" onClick={() => mutation.mutate({ requestId: req.id, action: 'reject' })}>Decline</Button>
+          </div>
+        </div>
+      )) : (
+        <p className="text-center text-gray-400 py-10">No pending friend requests.</p>
+      )}
+    </div>
+  );
+}
 export function FriendsPage() {
   const { data: friendsResponse, isLoading, isError } = useQuery({
     queryKey: ['friends'],
@@ -18,10 +84,6 @@ export function FriendsPage() {
   });
   const friends = friendsResponse?.items ?? [];
   const gamesBySlug = new Map(gamesResponse?.items.map(g => [g.slug, g]));
-  // Placeholder data for requests
-  const requests = [
-    { id: 4, name: 'StardewFarmer', avatar: 'https://i.pravatar.cc/150?u=request1' },
-  ];
   const renderFriendList = () => {
     if (isLoading) {
       return Array.from({ length: 3 }).map((_, i) => (
@@ -56,7 +118,9 @@ export function FriendsPage() {
               </p>
             </div>
           </div>
-          <Button variant="outline" className="border-void-600 hover:bg-void-700">Message</Button>
+          <Button asChild variant="outline" className="border-void-600 hover:bg-void-700">
+            <Link to={`/friends/chat/${friend.id}`}>Message</Link>
+          </Button>
         </div>
       );
     });
@@ -79,7 +143,7 @@ export function FriendsPage() {
       <Tabs defaultValue="friends" className="w-full">
         <TabsList className="grid w-full grid-cols-3 bg-void-800 border-void-700">
           <TabsTrigger value="friends">All Friends ({friends.length})</TabsTrigger>
-          <TabsTrigger value="requests">Friend Requests ({requests.length})</TabsTrigger>
+          <TabsTrigger value="requests">Friend Requests</TabsTrigger>
           <TabsTrigger value="blocked">Blocked</TabsTrigger>
         </TabsList>
         <TabsContent value="friends" className="py-6">
@@ -88,26 +152,10 @@ export function FriendsPage() {
           </div>
         </TabsContent>
         <TabsContent value="requests" className="py-6">
-          <div className="space-y-4">
-            {requests.map(req => (
-              <div key={req.id} className="flex items-center justify-between p-4 bg-void-800 rounded-lg border border-void-700">
-                <div className="flex items-center gap-4">
-                  <Avatar className="h-12 w-12">
-                    <AvatarImage src={req.avatar} />
-                    <AvatarFallback>{req.name.substring(0, 2)}</AvatarFallback>
-                  </Avatar>
-                  <p className="font-bold text-lg">{req.name}</p>
-                </div>
-                <div className="flex gap-2">
-                  <Button className="bg-green-600 hover:bg-green-700">Accept</Button>
-                  <Button variant="destructive">Decline</Button>
-                </div>
-              </div>
-            ))}
-          </div>
+          <FriendRequestsTab />
         </TabsContent>
         <TabsContent value="blocked" className="py-6">
-          <p className="text-center text-gray-400">You haven't blocked any players.</p>
+          <p className="text-center text-gray-400 py-10">You haven't blocked any players.</p>
         </TabsContent>
       </Tabs>
     </div>

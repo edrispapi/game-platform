@@ -90,3 +90,10 @@ export interface Notification {
   read: boolean;
   createdAt: number; // timestamp
 }
+export interface FriendRequest {
+  id: string;
+  fromUserId: string;
+  fromUsername: string;
+  fromUserAvatar: string;
+  status: 'pending' | 'accepted' | 'rejected';
+}

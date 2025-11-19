@@ -1,4 +1,4 @@
-import type { User, Chat, ChatMessage, Game, UserProfile, Friend, Notification } from './types';
+import type { User, Chat, ChatMessage, Game, UserProfile, Friend, Notification, FriendRequest } from './types';
 export const MOCK_USERS: User[] = [
   { id: 'u1', name: 'User A' },
   { id: 'u2', name: 'User B' }
@@ -86,7 +86,7 @@ export const MOCK_GAMES: Game[] = [
     id: 'g4',
     slug: 'stardew-valley',
     title: 'Stardew Valley',
-    description: 'You\'ve inherited your grandfather\'s old farm plot in Stardew Valley. Armed with hand-me-down tools and a few coins, you set out to begin your new life.',
+    description: 'You''ve inherited your grandfather''s old farm plot in Stardew Valley. Armed with hand-me-down tools and a few coins, you set out to begin your new life.',
     price: 14.99,
     coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/co292w.jpg',
     bannerImage: 'https://images.igdb.com/igdb/image/upload/t_screenshot_huge/sc6qxt.jpg',
@@ -149,5 +149,21 @@ export const MOCK_NOTIFICATIONS: Notification[] = [
     message: 'Welcome to Crimson Grid! Explore the store to find your next favorite game.',
     read: true,
     createdAt: Date.now() - 1000 * 60 * 60 * 24, // 1 day ago
+  },
+];
+export const MOCK_FRIEND_REQUESTS: FriendRequest[] = [
+  {
+    id: 'fr-1',
+    fromUserId: 'user-4',
+    fromUsername: 'StardewFarmer',
+    fromUserAvatar: 'https://i.pravatar.cc/150?u=request1',
+    status: 'pending',
+  },
+  {
+    id: 'fr-2',
+    fromUserId: 'user-5',
+    fromUsername: 'ValorantPro',
+    fromUserAvatar: 'https://i.pravatar.cc/150?u=request2',
+    status: 'pending',
   },
 ];

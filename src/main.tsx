@@ -24,6 +24,9 @@ import { SettingsPage } from '@/pages/SettingsPage';
 import { CartPage } from '@/pages/CartPage';
 import { CheckoutPage } from '@/pages/CheckoutPage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
+import { ChatPage } from '@/pages/ChatPage';
+import { AboutPage } from '@/pages/AboutPage';
+import { ContactPage } from '@/pages/ContactPage';
 import { Toaster } from '@/components/ui/sonner';
 // Set dark theme by default
 document.documentElement.classList.add('dark');
@@ -44,6 +47,16 @@ const router = createBrowserRouter([
     errorElement: <RouteErrorBoundary />,
   },
   {
+    path: "/about",
+    element: <AboutPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: "/contact",
+    element: <ContactPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
     element: <DashboardLayout />,
     errorElement: <RouteErrorBoundary />,
     children: [
@@ -52,6 +65,7 @@ const router = createBrowserRouter([
       { path: "/game/:slug", element: <GameDetailPage /> },
       { path: "/profile", element: <ProfilePage /> },
       { path: "/friends", element: <FriendsPage /> },
+      { path: "/friends/chat/:id", element: <ChatPage /> },
       { path: "/settings", element: <SettingsPage /> },
       { path: "/cart", element: <CartPage /> },
       { path: "/checkout", element: <CheckoutPage /> },
