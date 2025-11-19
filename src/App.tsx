@@ -32,7 +32,6 @@ import { GameForumPage } from '@/pages/GameForumPage';
 import { GameWorkshopPage } from '@/pages/GameWorkshopPage';
 import { SearchPage } from '@/pages/SearchPage';
 import { Toaster } from '@/components/ui/sonner';
-import { ThemeProvider } from '@/components/ThemeProvider';
 // Set dark theme by default
 document.documentElement.classList.add('dark');
 const router = createBrowserRouter([
@@ -87,10 +86,8 @@ export function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-          <RouterProvider router={router} />
-          <Toaster theme="dark" richColors closeButton />
-        </ThemeProvider>
+        <RouterProvider router={router} />
+        <Toaster theme="dark" richColors closeButton />
       </QueryClientProvider>
     </ErrorBoundary>
   );
