@@ -23,6 +23,7 @@ import { FriendsPage } from '@/pages/FriendsPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { CartPage } from '@/pages/CartPage';
 import { CheckoutPage } from '@/pages/CheckoutPage';
+import { NotificationsPage } from '@/pages/NotificationsPage';
 import { Toaster } from '@/components/ui/sonner';
 // Set dark theme by default
 document.documentElement.classList.add('dark');
@@ -54,6 +55,7 @@ const router = createBrowserRouter([
       { path: "/settings", element: <SettingsPage /> },
       { path: "/cart", element: <CartPage /> },
       { path: "/checkout", element: <CheckoutPage /> },
+      { path: "/notifications", element: <NotificationsPage /> },
     ],
   },
 ]);

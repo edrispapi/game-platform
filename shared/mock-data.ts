@@ -1,4 +1,4 @@
-import type { User, Chat, ChatMessage, Game, UserProfile, Friend } from './types';
+import type { User, Chat, ChatMessage, Game, UserProfile, Friend, Notification } from './types';
 export const MOCK_USERS: User[] = [
   { id: 'u1', name: 'User A' },
   { id: 'u2', name: 'User B' }
@@ -127,4 +127,27 @@ export const MOCK_FRIENDS: Friend[] = [
   { id: 'friend-1', username: 'CyberNinja', status: 'Online', game: 'cyberpunk-2077', avatar: 'https://i.pravatar.cc/150?u=friend1' },
   { id: 'friend-2', username: 'WitcherFan', status: 'Offline', avatar: 'https://i.pravatar.cc/150?u=friend2' },
   { id: 'friend-3', username: 'HadesPlayer', status: 'In Game', game: 'hades', avatar: 'https://i.pravatar.cc/150?u=friend3' },
+];
+export const MOCK_NOTIFICATIONS: Notification[] = [
+  {
+    id: 'notif-1',
+    type: 'friend-request',
+    message: 'CyberNinja sent you a friend request.',
+    read: false,
+    createdAt: Date.now() - 1000 * 60 * 5, // 5 minutes ago
+  },
+  {
+    id: 'notif-2',
+    type: 'achievement',
+    message: 'You unlocked the "Night City Legend" achievement in Cyberpunk 2077.',
+    read: false,
+    createdAt: Date.now() - 1000 * 60 * 60 * 2, // 2 hours ago
+  },
+  {
+    id: 'notif-3',
+    type: 'system',
+    message: 'Welcome to Crimson Grid! Explore the store to find your next favorite game.',
+    read: true,
+    createdAt: Date.now() - 1000 * 60 * 60 * 24, // 1 day ago
+  },
 ];

@@ -83,3 +83,10 @@ export interface Order {
   total: number;
   createdAt: number; // timestamp
 }
+export interface Notification {
+  id: string;
+  type: 'friend-request' | 'achievement' | 'system' | 'gift';
+  message: string;
+  read: boolean;
+  createdAt: number; // timestamp
+}

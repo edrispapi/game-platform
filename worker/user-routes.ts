@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from './core-utils';
-import { GameEntity, UserEntity, FriendEntity, OrderEntity } from "./entities";
+import { GameEntity, UserEntity, FriendEntity, OrderEntity, NotificationEntity } from "./entities";
 import { ok, notFound, bad } from './core-utils';
 import { Order, UserProfile } from "@shared/types";
 export function userRoutes(app: Hono<{ Bindings: Env }>) {
@@ -47,6 +47,11 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     return ok(c, page);
   });
   // ORDERS
+  app.get('/api/orders', async (c) => {
+    const page = await OrderEntity.list(c.env);
+    // In a real app, you'd filter by userId
+    return ok(c, page);
+  });
   app.post('/api/orders', async (c) => {
     const { items, total } = await c.req.json<{ items: Order['items'], total: number }>();
     if (!items || items.length === 0 || total === undefined) {
@@ -61,5 +66,20 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     };
     await OrderEntity.create(c.env, order);
     return ok(c, order);
+  });
+  // NOTIFICATIONS
+  app.get('/api/notifications', async (c) => {
+    await NotificationEntity.ensureSeed(c.env);
+    const page = await NotificationEntity.list(c.env);
+    return ok(c, page);
+  });
+  app.post('/api/notifications/:id/read', async (c) => {
+    const id = c.req.param('id');
+    const notification = new NotificationEntity(c.env, id);
+    if (!(await notification.exists())) {
+      return notFound(c, 'Notification not found');
+    }
+    await notification.patch({ read: true });
+    return ok(c, { success: true });
   });
 }

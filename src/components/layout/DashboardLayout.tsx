@@ -1,10 +1,13 @@
 import React from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { Gamepad2, Library, User, Store, Users, Settings, ShoppingCart } from "lucide-react";
+import { Gamepad2, Library, User, Store, Users, Settings, ShoppingCart, Bell } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useCartStore } from "@/stores/cart-store";
 import { Badge } from "@/components/ui/badge";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api-client";
+import { Notification } from "@shared/types";
 const navItems = [
   { to: "/store", icon: Store, label: "Store" },
   { to: "/library", icon: Library, label: "Library" },
@@ -13,6 +16,12 @@ const navItems = [
 ];
 export function DashboardLayout(): JSX.Element {
   const cartItemCount = useCartStore(s => s.items.length);
+  const { data: notificationsResponse } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => api<{ items: Notification[] }>('/api/notifications'),
+    refetchInterval: 60000, // Refetch every minute
+  });
+  const unreadCount = notificationsResponse?.items.filter(n => !n.read).length ?? 0;
   return (
     <div className="min-h-screen flex bg-void-950 text-gray-200">
       <TooltipProvider>
@@ -44,6 +53,28 @@ export function DashboardLayout(): JSX.Element {
             </nav>
           </div>
           <div className="flex flex-col items-center gap-4">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <NavLink
+                  to="/notifications"
+                  className={({ isActive }) =>
+                    `relative p-3 rounded-lg transition-colors duration-200 ${
+                      isActive ? "bg-blood-500 text-white" : "text-gray-400 hover:bg-void-800 hover:text-white"
+                    }`
+                  }
+                >
+                  <Bell className="h-6 w-6" />
+                  {unreadCount > 0 && (
+                    <Badge className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center bg-blood-500 text-white">
+                      {unreadCount}
+                    </Badge>
+                  )}
+                </NavLink>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p>Notifications</p>
+              </TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <NavLink
