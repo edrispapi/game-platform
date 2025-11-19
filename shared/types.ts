@@ -70,3 +70,16 @@ export interface Friend {
   status: FriendStatus;
   game?: string; // slug of the game they are playing
 }
+export interface OrderItem {
+  gameId: string;
+  title: string;
+  price: number;
+  quantity: number;
+}
+export interface Order {
+  id: string;
+  userId: string;
+  items: OrderItem[];
+  total: number;
+  createdAt: number; // timestamp
+}

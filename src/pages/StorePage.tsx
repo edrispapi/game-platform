@@ -15,8 +15,8 @@ export function StorePage() {
     queryKey: ['games'],
     queryFn: () => api<{ items: Game[] }>('/api/games'),
   });
-  const allGames = gamesResponse?.items ?? [];
-  const featuredGames = allGames.slice(0, 3);
+  const allGames = useMemo(() => gamesResponse?.items ?? [], [gamesResponse]);
+  const featuredGames = useMemo(() => allGames.slice(0, 3), [allGames]);
   const filteredGames = useMemo(() => {
     if (!searchQuery) return allGames;
     return allGames.filter(game =>

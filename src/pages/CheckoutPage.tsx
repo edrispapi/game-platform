@@ -1,4 +1,3 @@
-'use client';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -80,7 +79,7 @@ export function CheckoutPage() {
             </CardContent>
             <CardFooter>
               <Button type="submit" size="lg" className="w-full bg-blood-500 hover:bg-blood-600 text-lg font-bold shadow-blood-glow" disabled={orderMutation.isPending}>
-                {orderMutation.isPending ? 'Processing...' : `Pay ${totalPrice.toFixed(2)}`}
+                {orderMutation.isPending ? 'Processing...' : `Pay $${totalPrice.toFixed(2)}`}
               </Button>
             </CardFooter>
           </form>

@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import type { Env } from './core-utils';
-import { GameEntity, UserEntity, FriendEntity } from "./entities";
+import { GameEntity, UserEntity, FriendEntity, OrderEntity } from "./entities";
 import { ok, notFound, bad } from './core-utils';
-import { UserProfile } from "@shared/types";
+import { Order, UserProfile } from "@shared/types";
 export function userRoutes(app: Hono<{ Bindings: Env }>) {
   // GAMES
   app.get('/api/games', async (c) => {
@@ -45,5 +45,21 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     await FriendEntity.ensureSeed(c.env);
     const page = await FriendEntity.list(c.env);
     return ok(c, page);
+  });
+  // ORDERS
+  app.post('/api/orders', async (c) => {
+    const { items, total } = await c.req.json<{ items: Order['items'], total: number }>();
+    if (!items || items.length === 0 || total === undefined) {
+      return bad(c, 'Invalid order payload');
+    }
+    const order: Order = {
+      id: crypto.randomUUID(),
+      userId: 'user-1', // Mocked user ID
+      items,
+      total,
+      createdAt: Date.now(),
+    };
+    await OrderEntity.create(c.env, order);
+    return ok(c, order);
   });
 }

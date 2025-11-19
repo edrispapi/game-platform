@@ -1,5 +1,5 @@
 import { IndexedEntity } from "./core-utils";
-import type { Game, UserProfile, Friend } from "@shared/types";
+import type { Game, UserProfile, Friend, Order } from "@shared/types";
 import { MOCK_GAMES, MOCK_USER_PROFILES, MOCK_FRIENDS } from "@shared/mock-data";
 // GAME ENTITY: one DO instance per game
 export class GameEntity extends IndexedEntity<Game> {
@@ -58,4 +58,16 @@ export class FriendEntity extends IndexedEntity<Friend> {
     status: "Offline",
   };
   static seedData = MOCK_FRIENDS;
+}
+// ORDER ENTITY: one DO instance per order
+export class OrderEntity extends IndexedEntity<Order> {
+  static readonly entityName = "order";
+  static readonly indexName = "orders";
+  static readonly initialState: Order = {
+    id: "",
+    userId: "",
+    items: [],
+    total: 0,
+    createdAt: 0,
+  };
 }

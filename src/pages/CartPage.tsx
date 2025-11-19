@@ -72,8 +72,8 @@ export function CartPage() {
               </div>
             </CardContent>
             <CardFooter>
-              <Button size="lg" className="w-full bg-blood-500 hover:bg-blood-600 text-lg font-bold shadow-blood-glow">
-                Proceed to Checkout
+              <Button asChild size="lg" className="w-full bg-blood-500 hover:bg-blood-600 text-lg font-bold shadow-blood-glow">
+                <Link to="/checkout">Proceed to Checkout</Link>
               </Button>
             </CardFooter>
           </Card>
