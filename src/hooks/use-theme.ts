@@ -1,23 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useTheme as useNextTheme } from 'next-themes';
+import { useEffect, useState } from 'react';
 
 export function useTheme() {
-  const [isDark, setIsDark] = useState(() => {
-    const savedTheme = localStorage.getItem('theme');
-    return savedTheme ? savedTheme === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
-  });
+  const { resolvedTheme, setTheme } = useNextTheme();
+  const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
-    if (isDark) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
-  }, [isDark]);
+    setIsDark(resolvedTheme === 'dark');
+  }, [resolvedTheme]);
 
   const toggleTheme = () => {
-    setIsDark(!isDark);
+    setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
   };
 
   return { isDark, toggleTheme };
