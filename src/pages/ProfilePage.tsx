@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format } from "date-fns";
 import { AchievementsPage } from "./AchievementsPage";
+import { Link } from "react-router-dom";
 function OrderHistory() {
   const { data: ordersResponse, isLoading, isError } = useQuery({
     queryKey: ['orders'],
@@ -116,7 +117,9 @@ export function ProfilePage() {
               </Badge>
             </div>
           </div>
-          <Button className="ml-auto bg-void-700 hover:bg-void-600">Edit Profile</Button>
+          <Button asChild className="ml-auto bg-void-700 hover:bg-void-600">
+            <Link to="/settings">Edit Profile</Link>
+          </Button>
         </CardContent>
       </Card>
       <Tabs defaultValue="favorites" className="w-full">

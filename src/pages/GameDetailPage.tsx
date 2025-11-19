@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ShoppingCart, Check, Star, MessageSquare, Construction } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { Game, GameReview } from "@shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,20 +18,37 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { formatDistanceToNow } from "date-fns";
 import ReactPlayer from 'react-player/youtube';
-const mockReviews: GameReview[] = [
-  { id: 'r1', userId: 'u2', username: 'WitcherFan', rating: 5, comment: "Absolutely phenomenal game. A masterpiece of storytelling and open-world design.", createdAt: Date.now() - 1000 * 60 * 60 * 24 * 3 },
-  { id: 'r2', userId: 'u3', username: 'CyberNinja', rating: 4, comment: "Great atmosphere and fun gameplay, though it had a rocky launch. Much better now!", createdAt: Date.now() - 1000 * 60 * 60 * 24 * 1 },
-];
 export function GameDetailPage() {
   const { slug } = useParams<{ slug: string }>();
+  const queryClient = useQueryClient();
   const addToCart = useCartStore(s => s.addToCart);
   const cartItems = useCartStore(s => s.items);
-  const [reviews, setReviews] = useState<GameReview[]>(mockReviews);
   const [newReview, setNewReview] = useState({ rating: 0, comment: '' });
-  const { data: game, isLoading, isError } = useQuery({
+  const { data: game, isLoading: isLoadingGame, isError: isGameError } = useQuery({
     queryKey: ['game', slug],
     queryFn: () => api<Game>(`/api/games/${slug}`),
     enabled: !!slug,
+  });
+  const { data: reviewsResponse, isLoading: isLoadingReviews } = useQuery({
+    queryKey: ['reviews', slug],
+    queryFn: () => api<{ items: GameReview[] }>(`/api/games/${slug}/reviews`),
+    enabled: !!slug,
+  });
+  const reviews = reviewsResponse?.items ?? [];
+  const reviewMutation = useMutation({
+    mutationFn: (review: Omit<GameReview, 'id' | 'userId' | 'username' | 'createdAt'>) =>
+      api<GameReview>(`/api/games/${slug}/reviews`, {
+        method: 'POST',
+        body: JSON.stringify(review),
+      }),
+    onSuccess: () => {
+      toast.success("Review submitted successfully!");
+      setNewReview({ rating: 0, comment: '' });
+      queryClient.invalidateQueries({ queryKey: ['reviews', slug] });
+    },
+    onError: (error) => {
+      toast.error(`Failed to submit review: ${error.message}`);
+    },
   });
   const isInCart = game ? cartItems.some(item => item.id === game.id) : false;
   const handleAddToCart = () => {
@@ -43,22 +60,12 @@ export function GameDetailPage() {
   const handleReviewSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (newReview.rating > 0 && newReview.comment.trim()) {
-      const review: GameReview = {
-        id: `r${reviews.length + 1}`,
-        userId: 'user-1',
-        username: 'shadcn', // Mock current user
-        rating: newReview.rating,
-        comment: newReview.comment,
-        createdAt: Date.now(),
-      };
-      setReviews(prev => [review, ...prev]);
-      setNewReview({ rating: 0, comment: '' });
-      toast.success("Review submitted!");
+      reviewMutation.mutate(newReview);
     } else {
       toast.error("Please provide a rating and a comment.");
     }
   };
-  if (isLoading) {
+  if (isLoadingGame) {
     return (
       <div className="space-y-8">
         <Skeleton className="h-[450px] w-full rounded-lg" />
@@ -72,7 +79,7 @@ export function GameDetailPage() {
       </div>
     );
   }
-  if (isError || !game) {
+  if (isGameError || !game) {
     return <div className="text-center py-20 text-red-500">Game not found or failed to load.</div>;
   }
   return (
@@ -161,26 +168,32 @@ export function GameDetailPage() {
         <TabsContent value="reviews" className="py-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="md:col-span-2 space-y-6">
-              {reviews.map(review => (
-                <Card key={review.id} className="bg-void-800 border-void-700">
-                  <CardContent className="p-6 flex gap-4">
-                    <Avatar>
-                      <AvatarImage src={`https://i.pravatar.cc/150?u=${review.userId}`} />
-                      <AvatarFallback>{review.username.substring(0, 2)}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <div className="flex items-center gap-4">
-                        <p className="font-bold">{review.username}</p>
-                        <div className="flex items-center">
-                          {[...Array(5)].map((_, i) => <Star key={i} className={`h-4 w-4 ${i < review.rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-600'}`} />)}
+              {isLoadingReviews ? (
+                Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-32 w-full rounded-lg" />)
+              ) : reviews.length > 0 ? (
+                reviews.map(review => (
+                  <Card key={review.id} className="bg-void-800 border-void-700">
+                    <CardContent className="p-6 flex gap-4">
+                      <Avatar>
+                        <AvatarImage src={`https://i.pravatar.cc/150?u=${review.userId}`} />
+                        <AvatarFallback>{review.username.substring(0, 2)}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <div className="flex items-center gap-4">
+                          <p className="font-bold">{review.username}</p>
+                          <div className="flex items-center">
+                            {[...Array(5)].map((_, i) => <Star key={i} className={`h-4 w-4 ${i < review.rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-600'}`} />)}
+                          </div>
                         </div>
+                        <p className="text-sm text-gray-500">{formatDistanceToNow(new Date(review.createdAt), { addSuffix: true })}</p>
+                        <p className="mt-2 text-gray-300">{review.comment}</p>
                       </div>
-                      <p className="text-sm text-gray-500">{formatDistanceToNow(new Date(review.createdAt), { addSuffix: true })}</p>
-                      <p className="mt-2 text-gray-300">{review.comment}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (
+                <p className="text-center text-gray-400 py-10">No reviews yet. Be the first to write one!</p>
+              )}
             </div>
             <div>
               <Card className="bg-void-800 border-void-700 sticky top-24">
@@ -211,7 +224,9 @@ export function GameDetailPage() {
                         onChange={(e) => setNewReview(s => ({ ...s, comment: e.target.value }))}
                       />
                     </div>
-                    <Button type="submit" className="w-full bg-blood-500 hover:bg-blood-600">Submit Review</Button>
+                    <Button type="submit" className="w-full bg-blood-500 hover:bg-blood-600" disabled={reviewMutation.isPending}>
+                      {reviewMutation.isPending ? 'Submitting...' : 'Submit Review'}
+                    </Button>
                   </form>
                 </CardContent>
               </Card>

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env } from './core-utils';
 import { GameEntity, UserEntity, FriendEntity, OrderEntity, NotificationEntity, FriendRequestEntity, AchievementEntity } from "./entities";
 import { ok, notFound, bad } from './core-utils';
-import { FriendRequest, Order, UserProfile } from "@shared/types";
+import { FriendRequest, GameReview, Order, UserProfile } from "@shared/types";
 export function userRoutes(app: Hono<{ Bindings: Env }>) {
   // GAMES
   app.get('/api/games', async (c) => {
@@ -19,6 +19,43 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
       return notFound(c, 'Game not found');
     }
     return ok(c, game);
+  });
+  // GAME REVIEWS
+  app.get('/api/games/:slug/reviews', async (c) => {
+    const slug = c.req.param('slug');
+    const { items } = await GameEntity.list(c.env);
+    const game = items.find(g => g.slug === slug);
+    if (!game) {
+      return notFound(c, 'Game not found');
+    }
+    // In a real app, reviews would be their own entity. For demo, they are on the game object.
+    return ok(c, { items: game.reviews.sort((a, b) => b.createdAt - a.createdAt) });
+  });
+  app.post('/api/games/:slug/reviews', async (c) => {
+    const slug = c.req.param('slug');
+    const { rating, comment } = await c.req.json<{ rating: number; comment: string }>();
+    if (!rating || !comment) {
+      return bad(c, 'Rating and comment are required');
+    }
+    const { items } = await GameEntity.list(c.env);
+    const gameData = items.find(g => g.slug === slug);
+    if (!gameData) {
+      return notFound(c, 'Game not found');
+    }
+    const game = new GameEntity(c.env, gameData.id);
+    const newReview: GameReview = {
+      id: crypto.randomUUID(),
+      userId: 'user-1', // Mocked user
+      username: 'shadcn', // Mocked user
+      rating,
+      comment,
+      createdAt: Date.now(),
+    };
+    await game.mutate(g => ({
+      ...g,
+      reviews: [newReview, ...g.reviews],
+    }));
+    return ok(c, newReview);
   });
   // USER PROFILE
   // For this demo, we'll assume a single user 'user-1'

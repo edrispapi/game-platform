@@ -1,5 +1,5 @@
 'use client';
-import React from "react";
+import React, { useState } from "react";
 import { NavLink, Outlet, Link, useNavigate } from "react-router-dom";
 import { Gamepad2, Library, User, Store, Users, Settings, ShoppingCart, Bell, Search, LogOut } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -19,6 +19,7 @@ const navItems = [
 ];
 export function DashboardLayout(): JSX.Element {
   const navigate = useNavigate();
+  const [searchQuery, setSearchQuery] = useState('');
   const cartItemCount = useCartStore(s => s.items.length);
   const { data: notificationsResponse } = useQuery({
     queryKey: ['notifications'],
@@ -29,6 +30,12 @@ export function DashboardLayout(): JSX.Element {
   const handleLogout = () => {
     toast.info("You have been logged out.");
     navigate('/login');
+  };
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+    }
   };
   return (
     <div className="min-h-screen flex bg-void-950 text-gray-200">
@@ -92,10 +99,15 @@ export function DashboardLayout(): JSX.Element {
                 <Gamepad2 className="h-8 w-8 text-blood-500" />
                 <span className="font-orbitron text-2xl font-bold">CRIMSON <span className="text-blood-500">GRID</span></span>
             </Link>
-            <div className="relative w-full max-w-lg">
-                <Input placeholder="Search store, library, friends..." className="pl-10 bg-void-800 border-void-700 focus:ring-blood-500" />
+            <form onSubmit={handleSearchSubmit} className="relative w-full max-w-lg">
+                <Input
+                  placeholder="Search store, library, friends..."
+                  className="pl-10 bg-void-800 border-void-700 focus:ring-blood-500"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-            </div>
+            </form>
             <div className="flex items-center gap-4">
                 <TooltipProvider>
                     <Tooltip>
