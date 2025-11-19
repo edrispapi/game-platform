@@ -84,7 +84,8 @@ function runSetupCommands() {
     "bun add qrcode.react@^3.1.0",
     "bun add react-image-lightbox@^5.1.0",
     "bun add react-player@^2.16.0",
-    "bun install react-particles tsparticles"
+    "bun install react-particles tsparticles",
+    "bun add tsparticles-slim"
 ];
     
     if (commands.length === 0) {
