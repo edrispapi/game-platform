@@ -1,15 +1,36 @@
 import { useParams } from "react-router-dom";
-import { MOCK_GAMES } from "@shared/mock-data";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ShoppingCart } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api-client";
+import { Game } from "@shared/types";
+import { Skeleton } from "@/components/ui/skeleton";
 export function GameDetailPage() {
   const { slug } = useParams<{ slug: string }>();
-  const game = MOCK_GAMES.find((g) => g.slug === slug);
-  if (!game) {
-    return <div className="text-center py-20">Game not found.</div>;
+  const { data: game, isLoading, isError } = useQuery({
+    queryKey: ['game', slug],
+    queryFn: () => api<Game>(`/api/games/${slug}`),
+    enabled: !!slug,
+  });
+  if (isLoading) {
+    return (
+      <div className="space-y-8">
+        <Skeleton className="h-[450px] w-full rounded-lg" />
+        <div className="flex gap-2">
+          <Skeleton className="h-10 w-1/4" />
+          <Skeleton className="h-10 w-1/4" />
+          <Skeleton className="h-10 w-1/4" />
+          <Skeleton className="h-10 w-1/4" />
+        </div>
+        <Skeleton className="h-40 w-full" />
+      </div>
+    );
+  }
+  if (isError || !game) {
+    return <div className="text-center py-20 text-red-500">Game not found or failed to load.</div>;
   }
   return (
     <div className="animate-fade-in">
