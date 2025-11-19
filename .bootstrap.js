@@ -77,7 +77,14 @@ function updateWranglerJsonc() {
 }
 
 function runSetupCommands() {
-    const commands = [];
+    const commands = [
+    "bun add @clerk/clerk-react@^5.2.0",
+    "bun add react-particles@^2.12.0",
+    "bun add tsparticles@^3.4.0",
+    "bun add qrcode.react@^3.1.0",
+    "bun add react-image-lightbox@^5.1.0",
+    "bun add react-player@^2.16.0"
+];
     
     if (commands.length === 0) {
         console.log('⊘ No setup commands to run');
