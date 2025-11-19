@@ -1,4 +1,4 @@
-import type { User, Chat, ChatMessage, Game, UserProfile, Friend, Notification, FriendRequest } from './types';
+import type { User, Chat, ChatMessage, Game, UserProfile, Friend, Notification, FriendRequest, Achievement } from './types';
 export const MOCK_USERS: User[] = [
   { id: 'u1', name: 'User A' },
   { id: 'u2', name: 'User B' }
@@ -86,7 +86,7 @@ export const MOCK_GAMES: Game[] = [
     id: 'g4',
     slug: 'stardew-valley',
     title: 'Stardew Valley',
-    description: 'You''ve inherited your grandfather''s old farm plot in Stardew Valley. Armed with hand-me-down tools and a few coins, you set out to begin your new life.',
+    description: "You've inherited your grandfather's old farm plot in Stardew Valley. Armed with hand-me-down tools and a few coins, you set out to begin your new life.",
     price: 14.99,
     coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/co292w.jpg',
     bannerImage: 'https://images.igdb.com/igdb/image/upload/t_screenshot_huge/sc6qxt.jpg',
@@ -166,4 +166,51 @@ export const MOCK_FRIEND_REQUESTS: FriendRequest[] = [
     fromUserAvatar: 'https://i.pravatar.cc/150?u=request2',
     status: 'pending',
   },
+];
+export const MOCK_ACHIEVEMENTS: Achievement[] = [
+    {
+        id: 'ach-1',
+        name: 'Night City Legend',
+        description: 'Complete the main story of Cyberpunk 2077.',
+        icon: 'https://img.icons8.com/plasticine/100/cyberpunk-2077.png',
+        rarity: 'Epic',
+        progress: 100,
+        unlocked: true,
+    },
+    {
+        id: 'ach-2',
+        name: 'Master Farmer',
+        description: 'Earn 1,000,000g in Stardew Valley.',
+        icon: 'https://img.icons8.com/plasticine/100/stardew-valley.png',
+        rarity: 'Rare',
+        progress: 75,
+        unlocked: false,
+    },
+    {
+        id: 'ach-3',
+        name: 'Escapist',
+        description: 'Successfully escape the underworld in Hades for the first time.',
+        icon: 'https://img.icons8.com/plasticine/100/hades-symbol.png',
+        rarity: 'Common',
+        progress: 100,
+        unlocked: true,
+    },
+    {
+        id: 'ach-4',
+        name: 'Gwent Master',
+        description: 'Collect all Gwent cards in The Witcher 3.',
+        icon: 'https://img.icons8.com/plasticine/100/playing-cards.png',
+        rarity: 'Legendary',
+        progress: 20,
+        unlocked: false,
+    },
+    {
+        id: 'ach-5',
+        name: 'First Purchase',
+        description: 'Buy your first game on Crimson Grid.',
+        icon: 'https://img.icons8.com/plasticine/100/shopping-cart-loaded.png',
+        rarity: 'Common',
+        progress: 100,
+        unlocked: true,
+    },
 ];

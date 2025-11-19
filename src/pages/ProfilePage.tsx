@@ -11,6 +11,7 @@ import { GameCard } from "@/components/GameCard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format } from "date-fns";
+import { AchievementsPage } from "./AchievementsPage";
 function OrderHistory() {
   const { data: ordersResponse, isLoading, isError } = useQuery({
     queryKey: ['orders'],
@@ -118,8 +119,9 @@ export function ProfilePage() {
         </CardContent>
       </Card>
       <Tabs defaultValue="favorites" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 bg-void-800 border-void-700">
+        <TabsList className="grid w-full grid-cols-3 bg-void-800 border-void-700">
           <TabsTrigger value="favorites">Favorite Games</TabsTrigger>
+          <TabsTrigger value="achievements">Achievements</TabsTrigger>
           <TabsTrigger value="orders">Order History</TabsTrigger>
         </TabsList>
         <TabsContent value="favorites" className="py-6">
@@ -138,6 +140,9 @@ export function ProfilePage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+        <TabsContent value="achievements" className="py-6">
+          <AchievementsPage />
         </TabsContent>
         <TabsContent value="orders" className="py-6">
           <OrderHistory />

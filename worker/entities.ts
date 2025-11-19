@@ -1,6 +1,6 @@
 import { IndexedEntity } from "./core-utils";
-import type { Game, UserProfile, Friend, Order, Notification, FriendRequest } from "@shared/types";
-import { MOCK_GAMES, MOCK_USER_PROFILES, MOCK_FRIENDS, MOCK_NOTIFICATIONS, MOCK_FRIEND_REQUESTS } from "@shared/mock-data";
+import type { Game, UserProfile, Friend, Order, Notification, FriendRequest, Achievement } from "@shared/types";
+import { MOCK_GAMES, MOCK_USER_PROFILES, MOCK_FRIENDS, MOCK_NOTIFICATIONS, MOCK_FRIEND_REQUESTS, MOCK_ACHIEVEMENTS } from "@shared/mock-data";
 // GAME ENTITY: one DO instance per game
 export class GameEntity extends IndexedEntity<Game> {
   static readonly entityName = "game";
@@ -96,4 +96,19 @@ export class FriendRequestEntity extends IndexedEntity<FriendRequest> {
     status: "pending",
   };
   static seedData = MOCK_FRIEND_REQUESTS;
+}
+// ACHIEVEMENT ENTITY
+export class AchievementEntity extends IndexedEntity<Achievement> {
+    static readonly entityName = "achievement";
+    static readonly indexName = "achievements";
+    static readonly initialState: Achievement = {
+        id: "",
+        name: "",
+        description: "",
+        icon: "",
+        rarity: "Common",
+        progress: 0,
+        unlocked: false,
+    };
+    static seedData = MOCK_ACHIEVEMENTS;
 }

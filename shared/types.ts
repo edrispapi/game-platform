@@ -97,3 +97,13 @@ export interface FriendRequest {
   fromUserAvatar: string;
   status: 'pending' | 'accepted' | 'rejected';
 }
+export type AchievementRarity = 'Common' | 'Rare' | 'Epic' | 'Legendary';
+export interface Achievement {
+    id: string;
+    name: string;
+    description: string;
+    icon: string;
+    rarity: AchievementRarity;
+    progress: number; // 0-100
+    unlocked: boolean;
+}

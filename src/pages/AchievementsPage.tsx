@@ -1,4 +1,3 @@
-'use client';
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { Achievement, AchievementRarity } from "@shared/types";
@@ -43,7 +42,7 @@ export function AchievementsPage() {
                       <img src={ach.icon} alt={ach.name} width={80} height={80} className="mx-auto mb-3" />
                       <p className="font-bold text-lg truncate">{ach.name}</p>
                       <Badge className={cn("mt-2 border", rarityStyles[ach.rarity])}>{ach.rarity}</Badge>
-                      <Progress value={ach.progress} className="mt-4 h-2 bg-void-700" />
+                      <Progress value={ach.progress} className="mt-4 h-2 bg-void-700" indicatorClassName="bg-blood-500" />
                     </div>
                   </TooltipTrigger>
                   <TooltipContent className="bg-void-700 border-void-600 text-white">

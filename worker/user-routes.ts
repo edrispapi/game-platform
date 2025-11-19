@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from './core-utils';
-import { GameEntity, UserEntity, FriendEntity, OrderEntity, NotificationEntity, FriendRequestEntity } from "./entities";
+import { GameEntity, UserEntity, FriendEntity, OrderEntity, NotificationEntity, FriendRequestEntity, AchievementEntity } from "./entities";
 import { ok, notFound, bad } from './core-utils';
 import { Order, UserProfile } from "@shared/types";
 export function userRoutes(app: Hono<{ Bindings: Env }>) {
@@ -72,6 +72,12 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     }
     await req.patch({ status: 'rejected' });
     return ok(c, { success: true });
+  });
+  // ACHIEVEMENTS
+  app.get('/api/achievements', async (c) => {
+    await AchievementEntity.ensureSeed(c.env);
+    const page = await AchievementEntity.list(c.env);
+    return ok(c, page);
   });
   // ORDERS
   app.get('/api/orders', async (c) => {
