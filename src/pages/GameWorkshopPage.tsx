@@ -1,4 +1,3 @@
-'use client';
 import { Button } from "@/components/ui/button";
 import { Construction } from "lucide-react";
 import { Link, useParams } from "react-router-dom";

@@ -27,6 +27,7 @@ export interface GameReview {
   username: string;
   rating: number; // 1-5
   comment: string;
+  createdAt: number;
 }
 export interface Game {
   id: string;

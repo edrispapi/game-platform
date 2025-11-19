@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env } from './core-utils';
 import { GameEntity, UserEntity, FriendEntity, OrderEntity, NotificationEntity, FriendRequestEntity, AchievementEntity } from "./entities";
 import { ok, notFound, bad } from './core-utils';
-import { Order, UserProfile } from "@shared/types";
+import { FriendRequest, Order, UserProfile } from "@shared/types";
 export function userRoutes(app: Hono<{ Bindings: Env }>) {
   // GAMES
   app.get('/api/games', async (c) => {
@@ -29,6 +29,16 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
       return notFound(c, 'User profile not found');
     }
     return ok(c, await user.getState());
+  });
+  app.post('/api/profile', async (c) => {
+    const { username, bio } = (await c.req.json()) as Partial<UserProfile>;
+    if (!username || bio === undefined) return bad(c, 'Invalid profile payload');
+    const user = new UserEntity(c.env, 'user-1');
+    if (!(await user.exists())) {
+      return notFound(c, 'User profile not found');
+    }
+    await user.patch({ username, bio });
+    return ok(c, { success: true });
   });
   app.get('/api/user/:username', async (c) => {
     const username = c.req.param('username');
@@ -63,6 +73,25 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     // Filter for pending requests
     const pending = items.filter(req => req.status === 'pending');
     return ok(c, { items: pending });
+  });
+  app.post('/api/friend-requests/add', async (c) => {
+    const { username } = await c.req.json<{ username: string }>();
+    if (!username) {
+      return bad(c, 'Username is required');
+    }
+    // In a real app, you'd look up the target user, check for existing requests, etc.
+    // For this demo, we'll just create a request from our main user 'shadcn'.
+    const sender = new UserEntity(c.env, 'user-1');
+    const senderProfile = await sender.getState();
+    const newRequest: FriendRequest = {
+      id: crypto.randomUUID(),
+      fromUserId: senderProfile.id,
+      fromUsername: senderProfile.username,
+      fromUserAvatar: senderProfile.avatar,
+      status: 'pending',
+    };
+    await FriendRequestEntity.create(c.env, newRequest);
+    return ok(c, newRequest);
   });
   app.post('/api/friend-requests/:id/accept', async (c) => {
     const id = c.req.param('id');

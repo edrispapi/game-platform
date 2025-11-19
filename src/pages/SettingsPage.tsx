@@ -28,6 +28,19 @@ export function SettingsPage() {
       setEmailNotifications(profile.settings.emailNotifications);
     }
   }, [profile]);
+  const profileMutation = useMutation({
+    mutationFn: (updatedProfile: { username: string; bio: string }) => api('/api/profile', {
+      method: 'POST',
+      body: JSON.stringify(updatedProfile),
+    }),
+    onSuccess: () => {
+      toast.success('Profile updated successfully!');
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
+    },
+    onError: () => {
+      toast.error('Failed to update profile. Please try again.');
+    },
+  });
   const settingsMutation = useMutation({
     mutationFn: (newSettings: UserProfile['settings']) => api('/api/profile/settings', {
       method: 'POST',
@@ -41,7 +54,10 @@ export function SettingsPage() {
       toast.error('Failed to save settings. Please try again.');
     },
   });
-  const handleSaveChanges = () => {
+  const handleSaveProfile = () => {
+    profileMutation.mutate({ username, bio });
+  };
+  const handleSaveSettings = () => {
     settingsMutation.mutate({ profilePublic, emailNotifications });
   };
   if (isLoading) {
@@ -90,7 +106,9 @@ export function SettingsPage() {
                 <Label htmlFor="bio">Bio</Label>
                 <Input id="bio" value={bio} onChange={(e) => setBio(e.target.value)} className="bg-void-700 border-void-600" />
               </div>
-              <Button className="bg-blood-500 hover:bg-blood-600">Save Changes</Button>
+              <Button className="bg-blood-500 hover:bg-blood-600" onClick={handleSaveProfile} disabled={profileMutation.isPending}>
+                {profileMutation.isPending ? 'Saving...' : 'Save Changes'}
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -124,7 +142,7 @@ export function SettingsPage() {
                 <Label htmlFor="email-notifications">Email Notifications</Label>
                 <Switch id="email-notifications" checked={emailNotifications} onCheckedChange={setEmailNotifications} />
               </div>
-              <Button className="bg-blood-500 hover:bg-blood-600" onClick={handleSaveChanges} disabled={settingsMutation.isPending}>
+              <Button className="bg-blood-500 hover:bg-blood-600" onClick={handleSaveSettings} disabled={settingsMutation.isPending}>
                 {settingsMutation.isPending ? 'Saving...' : 'Save Preferences'}
               </Button>
             </CardContent>

@@ -29,6 +29,8 @@ import { AboutPage } from '@/pages/AboutPage';
 import { ContactPage } from '@/pages/ContactPage';
 import { AchievementsPage } from '@/pages/AchievementsPage';
 import { PublicProfilePage } from '@/pages/PublicProfilePage';
+import { GameForumPage } from '@/pages/GameForumPage';
+import { GameWorkshopPage } from '@/pages/GameWorkshopPage';
 import { Toaster } from '@/components/ui/sonner';
 // Set dark theme by default
 document.documentElement.classList.add('dark');
@@ -65,6 +67,8 @@ const router = createBrowserRouter([
       { path: "/store", element: <StorePage /> },
       { path: "/library", element: <LibraryPage /> },
       { path: "/game/:slug", element: <GameDetailPage /> },
+      { path: "/game/:slug/forum", element: <GameForumPage /> },
+      { path: "/game/:slug/workshop", element: <GameWorkshopPage /> },
       { path: "/profile", element: <ProfilePage /> },
       { path: "/profile/achievements", element: <AchievementsPage /> },
       { path: "/user/:username", element: <PublicProfilePage /> },
