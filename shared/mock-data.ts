@@ -1,4 +1,4 @@
-import type { User, Chat, ChatMessage, Game } from './types';
+import type { User, Chat, ChatMessage, Game, UserProfile, Friend } from './types';
 export const MOCK_USERS: User[] = [
   { id: 'u1', name: 'User A' },
   { id: 'u2', name: 'User B' }
@@ -106,4 +106,25 @@ export const MOCK_GAMES: Game[] = [
       storage: '500 MB available space',
     },
   },
+];
+export const MOCK_USER_PROFILES: UserProfile[] = [
+  {
+    id: 'user-1',
+    username: 'shadcn',
+    bio: 'Building beautiful things.',
+    avatar: 'https://github.com/shadcn.png',
+    hoursPlayed: 1234,
+    achievementsCount: 88,
+    friendsCount: 123,
+    favoriteGames: ['cyberpunk-2077', 'hades'],
+    settings: {
+      profilePublic: true,
+      emailNotifications: true,
+    },
+  },
+];
+export const MOCK_FRIENDS: Friend[] = [
+  { id: 'friend-1', username: 'CyberNinja', status: 'Online', game: 'cyberpunk-2077', avatar: 'https://i.pravatar.cc/150?u=friend1' },
+  { id: 'friend-2', username: 'WitcherFan', status: 'Offline', avatar: 'https://i.pravatar.cc/150?u=friend2' },
+  { id: 'friend-3', username: 'HadesPlayer', status: 'In Game', game: 'hades', avatar: 'https://i.pravatar.cc/150?u=friend3' },
 ];

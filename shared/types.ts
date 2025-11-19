@@ -48,3 +48,25 @@ export interface Game {
     storage: string;
   };
 }
+export interface UserProfile {
+  id: string;
+  username: string;
+  bio: string;
+  avatar: string;
+  hoursPlayed: number;
+  achievementsCount: number;
+  friendsCount: number;
+  favoriteGames: string[]; // array of game slugs
+  settings: {
+    profilePublic: boolean;
+    emailNotifications: boolean;
+  };
+}
+export type FriendStatus = 'Online' | 'Offline' | 'In Game';
+export interface Friend {
+  id: string;
+  username: string;
+  avatar: string;
+  status: FriendStatus;
+  game?: string; // slug of the game they are playing
+}

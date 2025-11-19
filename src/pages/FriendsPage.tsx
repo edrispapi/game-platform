@@ -3,16 +3,64 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UserPlus, Search } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api-client";
+import { Friend, Game } from "@shared/types";
+import { Skeleton } from "@/components/ui/skeleton";
 export function FriendsPage() {
-  // Placeholder data
-  const friends = [
-    { id: 1, name: 'CyberNinja', status: 'Online', game: 'Cyberpunk 2077', avatar: '/avatars/01.png' },
-    { id: 2, name: 'WitcherFan', status: 'Offline', game: '', avatar: '/avatars/02.png' },
-    { id: 3, name: 'HadesPlayer', status: 'In Game', game: 'Hades', avatar: '/avatars/03.png' },
-  ];
+  const { data: friendsResponse, isLoading, isError } = useQuery({
+    queryKey: ['friends'],
+    queryFn: () => api<{ items: Friend[] }>('/api/friends'),
+  });
+  const { data: gamesResponse } = useQuery({
+    queryKey: ['games'],
+    queryFn: () => api<{ items: Game[] }>('/api/games'),
+  });
+  const friends = friendsResponse?.items ?? [];
+  const gamesBySlug = new Map(gamesResponse?.items.map(g => [g.slug, g]));
+  // Placeholder data for requests
   const requests = [
-    { id: 4, name: 'StardewFarmer', avatar: '/avatars/04.png' },
+    { id: 4, name: 'StardewFarmer', avatar: 'https://i.pravatar.cc/150?u=request1' },
   ];
+  const renderFriendList = () => {
+    if (isLoading) {
+      return Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} className="flex items-center justify-between p-4 bg-void-800 rounded-lg border border-void-700">
+          <div className="flex items-center gap-4">
+            <Skeleton className="h-12 w-12 rounded-full" />
+            <div className="space-y-2">
+              <Skeleton className="h-5 w-32" />
+              <Skeleton className="h-4 w-48" />
+            </div>
+          </div>
+          <Skeleton className="h-10 w-24" />
+        </div>
+      ));
+    }
+    if (isError) {
+      return <p className="text-center text-red-500">Failed to load friends list.</p>;
+    }
+    return friends.map(friend => {
+      const game = friend.game ? gamesBySlug.get(friend.game) : null;
+      return (
+        <div key={friend.id} className="flex items-center justify-between p-4 bg-void-800 rounded-lg border border-void-700">
+          <div className="flex items-center gap-4">
+            <Avatar className="h-12 w-12">
+              <AvatarImage src={friend.avatar} />
+              <AvatarFallback>{friend.username.substring(0, 2).toUpperCase()}</AvatarFallback>
+            </Avatar>
+            <div>
+              <p className="font-bold text-lg">{friend.username}</p>
+              <p className={`text-sm ${friend.status === 'Online' ? 'text-green-400' : 'text-gray-400'}`}>
+                {friend.status} {game && `- Playing ${game.title}`}
+              </p>
+            </div>
+          </div>
+          <Button variant="outline" className="border-void-600 hover:bg-void-700">Message</Button>
+        </div>
+      );
+    });
+  };
   return (
     <div className="animate-fade-in">
       <div className="flex justify-between items-center mb-8">
@@ -36,23 +84,7 @@ export function FriendsPage() {
         </TabsList>
         <TabsContent value="friends" className="py-6">
           <div className="space-y-4">
-            {friends.map(friend => (
-              <div key={friend.id} className="flex items-center justify-between p-4 bg-void-800 rounded-lg border border-void-700">
-                <div className="flex items-center gap-4">
-                  <Avatar className="h-12 w-12">
-                    <AvatarImage src={friend.avatar} />
-                    <AvatarFallback>{friend.name.substring(0, 2)}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-bold text-lg">{friend.name}</p>
-                    <p className={`text-sm ${friend.status === 'Online' ? 'text-green-400' : 'text-gray-400'}`}>
-                      {friend.status} {friend.game && `- Playing ${friend.game}`}
-                    </p>
-                  </div>
-                </div>
-                <Button variant="outline" className="border-void-600 hover:bg-void-700">Message</Button>
-              </div>
-            ))}
+            {renderFriendList()}
           </div>
         </TabsContent>
         <TabsContent value="requests" className="py-6">
