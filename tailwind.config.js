@@ -161,6 +161,7 @@ export default {
   			'glow-lg': '0 0 40px -10px rgba(99, 102, 241, 0.3)',
   			primary: '0 0 20px -5px hsl(var(--primary) / 0.4)',
         'blood-glow': '0 0 20px -5px hsl(0, 72%, 51% / 0.6)',
+        'neon-red': '0 0 15px hsl(var(--primary) / 0.8), 0 0 5px hsl(var(--primary) / 0.6)',
   			glass: '0 8px 32px 0 rgba(31, 38, 135, 0.37)'
   		},
   		keyframes: {

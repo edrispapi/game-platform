@@ -7,31 +7,33 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { Game } from "@shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
-import { useState, useMemo } from "react";
+import { motion } from "framer-motion";
+const Section = ({ title, children }: { title: string, children: React.ReactNode }) => (
+  <motion.section
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.5 }}
+    className="space-y-6"
+  >
+    <h2 className="font-orbitron text-3xl font-bold text-blood-500">{title}</h2>
+    {children}
+  </motion.section>
+);
 export function StorePage() {
-  const [searchQuery, setSearchQuery] = useState('');
   const { data: gamesResponse, isLoading, isError } = useQuery({
     queryKey: ['games'],
     queryFn: () => api<{ items: Game[] }>('/api/games'),
   });
-  const allGames = useMemo(() => gamesResponse?.items ?? [], [gamesResponse]);
-  const featuredGames = useMemo(() => allGames.slice(0, 3), [allGames]);
-  const filteredGames = useMemo(() => {
-    if (!searchQuery) return allGames;
-    return allGames.filter(game =>
-      game.title.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [allGames, searchQuery]);
+  const allGames = gamesResponse?.items ?? [];
+  const featuredGames = allGames.slice(0, 3);
+  const topSellers = [...allGames].sort((a, b) => b.price - a.price).slice(0, 5);
+  const newReleases = [...allGames].reverse().slice(0, 5);
   if (isError) {
     return <div className="text-center text-red-500">Failed to load games. Please try again later.</div>;
   }
   return (
     <div className="space-y-12 animate-fade-in">
-      {/* Featured Carousel */}
-      <section>
-        <h2 className="font-orbitron text-3xl font-bold text-blood-500 mb-6">Featured & Recommended</h2>
+      <Section title="Featured & Recommended">
         {isLoading ? (
           <Skeleton className="w-full aspect-video rounded-lg" />
         ) : (
@@ -57,36 +59,25 @@ export function StorePage() {
             <CarouselNext className="right-4" />
           </Carousel>
         )}
-      </section>
-      {/* All Games Grid */}
-      <section>
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="font-orbitron text-3xl font-bold text-blood-500">Browse All Games</h2>
-          <div className="relative w-full max-w-xs">
-            <Input
-              placeholder="Search games..."
-              className="pl-10 bg-void-800 border-void-700 focus:ring-blood-500"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-          </div>
-        </div>
+      </Section>
+      <Section title="Top Sellers">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
           {isLoading ? (
-            Array.from({ length: 10 }).map((_, i) => <Skeleton key={i} className="aspect-[3/4] rounded-lg" />)
+            Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="aspect-[3/4] rounded-lg" />)
           ) : (
-            filteredGames.map((game) => (
-              <GameCard key={game.id} game={game} />
-            ))
+            topSellers.map((game) => <GameCard key={game.id} game={game} />)
           )}
         </div>
-        {!isLoading && filteredGames.length === 0 && (
-          <div className="text-center py-10 col-span-full">
-            <p className="text-gray-400">No games found for "{searchQuery}".</p>
-          </div>
-        )}
-      </section>
+      </Section>
+      <Section title="New Releases">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+          {isLoading ? (
+            Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="aspect-[3/4] rounded-lg" />)
+          ) : (
+            newReleases.map((game) => <GameCard key={game.id} game={game} />)
+          )}
+        </div>
+      </Section>
     </div>
   );
 }

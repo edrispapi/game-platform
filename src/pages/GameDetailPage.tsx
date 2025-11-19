@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { formatDistanceToNow } from "date-fns";
+import ReactPlayer from 'react-player/youtube';
 const mockReviews: GameReview[] = [
   { id: 'r1', userId: 'u2', username: 'WitcherFan', rating: 5, comment: "Absolutely phenomenal game. A masterpiece of storytelling and open-world design.", createdAt: Date.now() - 1000 * 60 * 60 * 24 * 3 },
   { id: 'r2', userId: 'u3', username: 'CyberNinja', rating: 4, comment: "Great atmosphere and fun gameplay, though it had a rocky launch. Much better now!", createdAt: Date.now() - 1000 * 60 * 60 * 24 * 1 },
@@ -123,14 +124,23 @@ export function GameDetailPage() {
         <TabsContent value="description" className="py-6 text-lg text-gray-300 leading-relaxed">
           <p>{game.description}</p>
         </TabsContent>
-        <TabsContent value="media">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 py-6">
-            {game.screenshots.map((img, idx) => (
-              <a href={img} target="_blank" rel="noopener noreferrer" key={idx} className="overflow-hidden rounded-lg group">
-                <img src={img} alt={`screenshot ${idx + 1}`} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
-              </a>
-            ))}
-          </div>
+        <TabsContent value="media" className="py-6 space-y-8">
+            <div>
+                <h3 className="font-orbitron text-2xl font-bold mb-4 text-blood-400">Trailer</h3>
+                <div className="aspect-video rounded-lg overflow-hidden">
+                    <ReactPlayer url={game.videos[0]} width="100%" height="100%" controls />
+                </div>
+            </div>
+            <div>
+                <h3 className="font-orbitron text-2xl font-bold mb-4 text-blood-400">Screenshots</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {game.screenshots.map((img, idx) => (
+                    <a href={img} target="_blank" rel="noopener noreferrer" key={idx} className="overflow-hidden rounded-lg group">
+                        <img src={img} alt={`screenshot ${idx + 1}`} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                    </a>
+                    ))}
+                </div>
+            </div>
         </TabsContent>
         <TabsContent value="requirements" className="py-6">
             <Accordion type="single" collapsible className="w-full" defaultValue="requirements">

@@ -71,3 +71,8 @@
     text-rendering: optimizeLegibility;
   }
 }
+@layer components {
+  .card-glass {
+    @apply bg-void-800/50 backdrop-blur-lg border border-void-700/50;
+  }
+}
