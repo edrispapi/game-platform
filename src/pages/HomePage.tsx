@@ -1,3 +1,4 @@
+'use client';
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -96,7 +97,7 @@ export function HomePage() {
         </div>
       </section>
       <footer className="bg-void-900 py-6 text-center text-gray-500">
-        <p>Built with ❤��� at Cloudflare</p>
+        <p>Built with ❤️ at Cloudflare</p>
       </footer>
     </div>
   );

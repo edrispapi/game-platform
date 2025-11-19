@@ -1,3 +1,4 @@
+'use client';
 import { GameCard } from "@/components/GameCard";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { Link } from "react-router-dom";

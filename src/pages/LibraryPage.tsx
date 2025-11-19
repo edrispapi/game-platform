@@ -1,3 +1,4 @@
+'use client';
 import { GameCard } from "@/components/GameCard";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";

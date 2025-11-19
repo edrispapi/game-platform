@@ -1,3 +1,4 @@
+'use client';
 import React from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { Gamepad2, Library, User, Store, Users, Settings, ShoppingCart, Bell } from "lucide-react";

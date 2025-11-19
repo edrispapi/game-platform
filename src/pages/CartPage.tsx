@@ -1,3 +1,4 @@
+'use client';
 import { useCartStore } from '@/stores/cart-store';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
