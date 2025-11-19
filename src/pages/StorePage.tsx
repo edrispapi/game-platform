@@ -8,6 +8,7 @@ import { api } from "@/lib/api-client";
 import { Game } from "@shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "framer-motion";
+import { ArrowRight } from "lucide-react";
 const Section = ({ title, children }: { title: string, children: React.ReactNode }) => (
   <motion.section
     initial={{ opacity: 0, y: 20 }}
@@ -76,6 +77,17 @@ export function StorePage() {
           ) : (
             newReleases.map((game) => <GameCard key={game.id} game={game} />)
           )}
+        </div>
+      </Section>
+      <Section title="Browse All Games">
+        <div className="card-glass rounded-lg p-8 text-center">
+          <h3 className="text-2xl font-bold mb-2">Can't find what you're looking for?</h3>
+          <p className="text-gray-400 mb-6">Explore our entire catalog with advanced search and filtering options.</p>
+          <Button asChild size="lg" className="bg-blood-500 hover:bg-blood-600">
+            <Link to="/search">
+              Explore All Games <ArrowRight className="ml-2 h-5 w-5" />
+            </Link>
+          </Button>
         </div>
       </Section>
     </div>
