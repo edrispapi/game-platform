@@ -3,18 +3,29 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { ShoppingCart } from "lucide-react";
+import { ShoppingCart, Check } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { Game } from "@shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useCartStore } from "@/stores/cart-store";
+import { toast } from "sonner";
 export function GameDetailPage() {
   const { slug } = useParams<{ slug: string }>();
+  const addToCart = useCartStore(s => s.addToCart);
+  const cartItems = useCartStore(s => s.items);
   const { data: game, isLoading, isError } = useQuery({
     queryKey: ['game', slug],
     queryFn: () => api<Game>(`/api/games/${slug}`),
     enabled: !!slug,
   });
+  const isInCart = game ? cartItems.some(item => item.id === game.id) : false;
+  const handleAddToCart = () => {
+    if (game) {
+      addToCart(game);
+      toast.success(`${game.title} added to cart!`);
+    }
+  };
   if (isLoading) {
     return (
       <div className="space-y-8">
@@ -48,9 +59,23 @@ export function GameDetailPage() {
         </div>
         <div className="absolute bottom-8 right-8 flex items-center gap-4">
             <p className="font-orbitron text-3xl font-bold text-white">${game.price}</p>
-            <Button size="lg" className="bg-blood-500 hover:bg-blood-600 text-white text-lg font-bold shadow-blood-glow">
-                <ShoppingCart className="mr-2 h-5 w-5" />
-                Add to Cart
+            <Button
+              size="lg"
+              className="bg-blood-500 hover:bg-blood-600 text-white text-lg font-bold shadow-blood-glow disabled:bg-green-600 disabled:opacity-100"
+              onClick={handleAddToCart}
+              disabled={isInCart}
+            >
+              {isInCart ? (
+                <>
+                  <Check className="mr-2 h-5 w-5" />
+                  In Cart
+                </>
+              ) : (
+                <>
+                  <ShoppingCart className="mr-2 h-5 w-5" />
+                  Add to Cart
+                </>
+              )}
             </Button>
         </div>
       </div>

@@ -1,4 +1,3 @@
-'use client';
 import { useCartStore } from '@/stores/cart-store';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -73,8 +72,8 @@ export function CartPage() {
               </div>
             </CardContent>
             <CardFooter>
-              <Button asChild size="lg" className="w-full bg-blood-500 hover:bg-blood-600 text-lg font-bold shadow-blood-glow">
-                <Link to="/checkout">Proceed to Checkout</Link>
+              <Button size="lg" className="w-full bg-blood-500 hover:bg-blood-600 text-lg font-bold shadow-blood-glow">
+                Proceed to Checkout
               </Button>
             </CardFooter>
           </Card>

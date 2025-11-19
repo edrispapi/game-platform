@@ -1,10 +1,20 @@
-import { MOCK_GAMES } from "@shared/mock-data";
 import { GameCard } from "@/components/GameCard";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api-client";
+import { Game } from "@shared/types";
+import { Skeleton } from "@/components/ui/skeleton";
 export function LibraryPage() {
-  // For demo, we assume the user owns all mock games
-  const userLibrary = MOCK_GAMES;
+  const { data: gamesResponse, isLoading, isError } = useQuery({
+    queryKey: ['games'],
+    queryFn: () => api<{ items: Game[] }>('/api/games'),
+  });
+  // For demo, we assume the user owns all available games
+  const userLibrary = gamesResponse?.items ?? [];
+  if (isError) {
+    return <div className="text-center text-red-500">Failed to load your library. Please try again later.</div>;
+  }
   return (
     <div className="animate-fade-in">
       <div className="flex justify-between items-center mb-8">
@@ -14,7 +24,11 @@ export function LibraryPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
         </div>
       </div>
-      {userLibrary.length > 0 ? (
+      {isLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+          {Array.from({ length: 10 }).map((_, i) => <Skeleton key={i} className="aspect-[3/4] rounded-lg" />)}
+        </div>
+      ) : userLibrary.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
           {userLibrary.map((game) => (
             <GameCard key={game.id} game={game} variant="library" />

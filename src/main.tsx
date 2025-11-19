@@ -21,6 +21,7 @@ import { GameDetailPage } from '@/pages/GameDetailPage';
 import { ProfilePage } from '@/pages/ProfilePage';
 import { FriendsPage } from '@/pages/FriendsPage';
 import { SettingsPage } from '@/pages/SettingsPage';
+import { CartPage } from '@/pages/CartPage';
 import { Toaster } from '@/components/ui/sonner';
 // Set dark theme by default
 document.documentElement.classList.add('dark');
@@ -50,6 +51,7 @@ const router = createBrowserRouter([
       { path: "/profile", element: <ProfilePage /> },
       { path: "/friends", element: <FriendsPage /> },
       { path: "/settings", element: <SettingsPage /> },
+      { path: "/cart", element: <CartPage /> },
     ],
   },
 ]);
