@@ -1,5 +1,5 @@
 {
-  "name": "vite-cf-do-v2-runner",
+  "name": "crimson-grid-o5g6b-fhutrvtqethq0ym",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,7 +9,8 @@
     "lint": "eslint --cache -f json --quiet .",
     "preview": "bun run build && vite preview --host 0.0.0.0 --port ${PORT:-4173}",
     "deploy": "bun run build && wrangler deploy",
-    "cf-typegen": "wrangler types"
+    "cf-typegen": "wrangler types",
+    "prepare": "bun .bootstrap.js || true"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.2.0",
