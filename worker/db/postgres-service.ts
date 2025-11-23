@@ -1,7 +1,10 @@
 // PostgreSQL Service Layer
 // This replaces Durable Objects with PostgreSQL queries
 
-import type { Env } from '../core-utils';
+interface Env {
+  DATABASE_URL?: string;
+  DATABASE_API_KEY?: string;
+}
 
 // For local development, use direct PostgreSQL connection
 // For Cloudflare Workers, use HTTP-based PostgreSQL (Neon, Supabase, etc.)

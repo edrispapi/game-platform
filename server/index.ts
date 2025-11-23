@@ -7,24 +7,29 @@ import { logger } from 'hono/logger';
 import { userRoutes } from '../worker/user-routes';
 import postgres from 'postgres';
 
-const PORT = 8787;
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 8787;
 const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://gameuser:gamepass123@localhost:5454/game_platform';
 
 // Create PostgreSQL connection
-const sql = postgres(DATABASE_URL, {
-  max: 10,
-  idle_timeout: 20,
-  connect_timeout: 10,
-});
+let sql: postgres.Sql | null = null;
 
-console.log('✅ Connected to PostgreSQL');
+try {
+  sql = postgres(DATABASE_URL, {
+    max: 10,
+    idle_timeout: 20,
+    connect_timeout: 10,
+  });
+  console.log('✅ Connected to PostgreSQL');
+} catch (error) {
+  console.error('❌ Failed to connect to PostgreSQL:', error);
+  process.exit(1);
+}
 
 // Create environment object for routes
 const env = {
   DATABASE_URL,
   DATABASE_API_KEY: process.env.DATABASE_API_KEY,
-  // Remove GlobalDurableObject requirement
-} as any;
+};
 
 const app = new Hono();
 
@@ -34,6 +39,12 @@ app.use('/api/*', cors({
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], 
   allowHeaders: ['Content-Type', 'Authorization'] 
 }));
+
+// Inject env into context
+app.use('*', async (c, next) => {
+  c.env = env as any;
+  await next();
+});
 
 // Add routes
 userRoutes(app);
@@ -58,8 +69,8 @@ app.onError((err, c) => {
 console.log(`🚀 Server starting on http://localhost:${PORT}`);
 console.log(`📊 Database: ${DATABASE_URL.replace(/:[^:]*@/, ':****@')}`);
 
+// Start Bun server
 export default {
   port: PORT,
   fetch: app.fetch,
 };
-
