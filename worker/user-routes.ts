@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import type { Env } from './core-utils';
-import { GameEntity, UserEntity, FriendEntity, OrderEntity, NotificationEntity, FriendRequestEntity, AchievementEntity } from "./entities";
+import { GameEntity, UserEntity, FriendEntity, OrderEntity, NotificationEntity, FriendRequestEntity, AchievementEntity, ChatMessageEntity } from "./entities";
 import { ok, notFound, bad } from './core-utils';
-import { FriendRequest, GameReview, Order, UserProfile } from "@shared/types";
+import { FriendRequest, GameReview, Order, UserProfile, Friend, ChatMessage } from "@shared/types";
 export function userRoutes(app: Hono<{ Bindings: Env }>) {
   // GAMES
   app.get('/api/games', async (c) => {
@@ -118,6 +118,7 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     }
     // In a real app, you'd look up the target user, check for existing requests, etc.
     // For this demo, we'll just create a request from our main user 'shadcn'.
+    await UserEntity.ensureSeed(c.env);
     const sender = new UserEntity(c.env, 'user-1');
     const senderProfile = await sender.getState();
     const newRequest: FriendRequest = {
@@ -136,8 +137,23 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     if (!(await req.exists())) {
       return notFound(c, 'Friend request not found');
     }
+    const requestData = await req.getState();
+    if (requestData.status !== 'pending') {
+      return bad(c, 'Friend request already processed');
+    }
     await req.patch({ status: 'accepted' });
-    // In a real app, you would also add the user to the friends list
+    // Add the friend to the friends list
+    const newFriend: Friend = {
+      id: requestData.fromUserId,
+      username: requestData.fromUsername,
+      avatar: requestData.fromUserAvatar,
+      status: 'Online',
+    };
+    // Check if friend already exists
+    const existingFriend = new FriendEntity(c.env, newFriend.id);
+    if (!(await existingFriend.exists())) {
+      await FriendEntity.create(c.env, newFriend);
+    }
     return ok(c, { success: true });
   });
   app.post('/api/friend-requests/:id/reject', async (c) => {
@@ -157,6 +173,7 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
   });
   // ORDERS
   app.get('/api/orders', async (c) => {
+    await OrderEntity.ensureSeed(c.env);
     const page = await OrderEntity.list(c.env);
     // In a real app, you'd filter by userId
     return ok(c, page);
@@ -190,5 +207,32 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     }
     await notification.patch({ read: true });
     return ok(c, { success: true });
+  });
+  // CHAT MESSAGES
+  app.get('/api/chats/:chatId/messages', async (c) => {
+    const chatId = c.req.param('chatId');
+    await ChatMessageEntity.ensureSeed(c.env);
+    const { items } = await ChatMessageEntity.list(c.env);
+    // Filter messages by chatId and sort by timestamp
+    const messages = items
+      .filter(msg => msg.chatId === chatId)
+      .sort((a, b) => a.ts - b.ts);
+    return ok(c, messages);
+  });
+  app.post('/api/chats/:chatId/messages', async (c) => {
+    const chatId = c.req.param('chatId');
+    const { userId, text } = await c.req.json<{ userId: string; text: string }>();
+    if (!userId || !text?.trim()) {
+      return bad(c, 'userId and text are required');
+    }
+    const newMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      chatId,
+      userId,
+      text: text.trim(),
+      ts: Date.now(),
+    };
+    await ChatMessageEntity.create(c.env, newMessage);
+    return ok(c, newMessage);
   });
 }

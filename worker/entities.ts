@@ -1,6 +1,6 @@
 import { IndexedEntity } from "./core-utils";
-import type { Game, UserProfile, Friend, Order, Notification, FriendRequest, Achievement } from "@shared/types";
-import { MOCK_GAMES, MOCK_USER_PROFILES, MOCK_FRIENDS, MOCK_NOTIFICATIONS, MOCK_FRIEND_REQUESTS, MOCK_ACHIEVEMENTS } from "@shared/mock-data";
+import type { Game, UserProfile, Friend, Order, Notification, FriendRequest, Achievement, ChatMessage } from "@shared/types";
+import { MOCK_GAMES, MOCK_USER_PROFILES, MOCK_FRIENDS, MOCK_NOTIFICATIONS, MOCK_FRIEND_REQUESTS, MOCK_ACHIEVEMENTS, MOCK_ORDERS, MOCK_CHAT_MESSAGES } from "@shared/mock-data";
 // GAME ENTITY: one DO instance per game
 export class GameEntity extends IndexedEntity<Game> {
   static readonly entityName = "game";
@@ -70,6 +70,7 @@ export class OrderEntity extends IndexedEntity<Order> {
     total: 0,
     createdAt: 0,
   };
+  static seedData = MOCK_ORDERS;
 }
 // NOTIFICATION ENTITY: one DO instance per notification
 export class NotificationEntity extends IndexedEntity<Notification> {
@@ -111,4 +112,17 @@ export class AchievementEntity extends IndexedEntity<Achievement> {
         unlocked: false,
     };
     static seedData = MOCK_ACHIEVEMENTS;
+}
+// CHAT MESSAGE ENTITY: one DO instance per message
+export class ChatMessageEntity extends IndexedEntity<ChatMessage> {
+  static readonly entityName = "chatMessage";
+  static readonly indexName = "chatMessages";
+  static readonly initialState: ChatMessage = {
+    id: "",
+    chatId: "",
+    userId: "",
+    text: "",
+    ts: 0,
+  };
+  static seedData = MOCK_CHAT_MESSAGES;
 }
