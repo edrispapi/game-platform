@@ -5,25 +5,35 @@ import { api } from "@/lib/api-client";
 import { Game, GameTag } from "@shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { Gamepad2, Clock } from "lucide-react";
-const mockHoursByGenre: { name: GameTag, hours: number }[] = [
-    { name: 'RPG', hours: 450 },
-    { name: 'Action', hours: 300 },
-    { name: 'Shooter', hours: 150 },
-    { name: 'Indie', hours: 200 },
-    { name: 'Strategy', hours: 80 },
-    { name: 'Adventure', hours: 120 },
-];
+import { UserHoursByGenre } from "@shared/types";
 export function LibraryPage() {
-  const { data: gamesResponse, isLoading, isError } = useQuery({
+  const { data: gamesResponse, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['games'],
     queryFn: () => api<{ items: Game[] }>('/api/games'),
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    staleTime: 5 * 60 * 1000,
+  });
+  const { data: hoursResponse } = useQuery({
+    queryKey: ['hours-by-genre'],
+    queryFn: () => api<{ items: UserHoursByGenre[] }>('/api/profile/hours-by-genre'),
   });
   const userLibrary = gamesResponse?.items ?? [];
-  const totalHours = mockHoursByGenre.reduce((sum, genre) => sum + genre.hours, 0);
+  const hoursByGenre = hoursResponse?.items ?? [];
+  const totalHours = hoursByGenre.reduce((sum, item) => sum + item.hours, 0);
   if (isError) {
-    return <div className="text-center text-red-500">Failed to load your library. Please try again later.</div>;
+    return (
+      <div className="text-center py-20">
+        <div className="text-red-500 mb-4 text-lg font-bold">Failed to load your library. Please try again later.</div>
+        {error && <p className="text-sm text-gray-400 mb-4">{error.message}</p>}
+        <Button onClick={() => refetch()} className="bg-blood-500 hover:bg-blood-600">
+          Retry
+        </Button>
+      </div>
+    );
   }
   return (
     <div className="animate-fade-in space-y-12">
@@ -54,7 +64,7 @@ export function LibraryPage() {
                 </CardHeader>
                 <CardContent className="pl-2">
                     <ResponsiveContainer width="100%" height={200}>
-                        <BarChart data={mockHoursByGenre} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                        <BarChart data={hoursByGenre.map(item => ({ name: item.genre, hours: item.hours }))} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.3)" />
                             <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
                             <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />

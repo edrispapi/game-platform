@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { formatDistanceToNow } from "date-fns";
 import ReactPlayer from 'react-player/youtube';
+import { UserLink } from "@/components/UserLink";
 export function GameDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const queryClient = useQueryClient();
@@ -134,9 +135,32 @@ export function GameDetailPage() {
         <TabsContent value="media" className="py-6 space-y-8">
             <div>
                 <h3 className="font-orbitron text-2xl font-bold mb-4 text-blood-400">Trailer</h3>
-                <div className="aspect-video rounded-lg overflow-hidden">
-                    <ReactPlayer url={game.videos[0]} width="100%" height="100%" controls />
-                </div>
+                {game.videos && game.videos.length > 0 && game.videos[0] ? (
+                    <div className="aspect-video rounded-lg overflow-hidden bg-void-800">
+                        <ReactPlayer 
+                            url={game.videos[0]} 
+                            width="100%" 
+                            height="100%" 
+                            controls
+                            onError={(error) => {
+                                console.error('Video player error:', error);
+                                toast.error('Failed to load trailer video');
+                            }}
+                            fallback={
+                                <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                    Loading trailer...
+                                </div>
+                            }
+                        />
+                    </div>
+                ) : (
+                    <div className="aspect-video rounded-lg bg-void-800 flex items-center justify-center text-gray-400 border border-void-700">
+                        <div className="text-center">
+                            <p className="text-lg mb-2">No trailer available</p>
+                            <p className="text-sm text-gray-500">Trailer video will be available soon</p>
+                        </div>
+                    </div>
+                )}
             </div>
             <div>
                 <h3 className="font-orbitron text-2xl font-bold mb-4 text-blood-400">Screenshots</h3>
@@ -180,7 +204,9 @@ export function GameDetailPage() {
                       </Avatar>
                       <div>
                         <div className="flex items-center gap-4">
-                          <p className="font-bold">{review.username}</p>
+                          <UserLink username={review.username} className="font-bold">
+                            {review.username}
+                          </UserLink>
                           <div className="flex items-center">
                             {[...Array(5)].map((_, i) => <Star key={i} className={`h-4 w-4 ${i < review.rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-600'}`} />)}
                           </div>

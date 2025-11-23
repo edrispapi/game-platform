@@ -31,6 +31,7 @@ export function GameCard({ game, variant = 'store' }: GameCardProps) {
       </Link>
       <div className="p-4">
         <h3 className="font-orbitron text-lg font-bold truncate text-white">{game.title}</h3>
+        <p className="text-xs text-gray-400 mt-1 line-clamp-2">{game.description.substring(0, 80)}...</p>
         <div className="flex items-center justify-between mt-2">
           <div className="flex items-center gap-1">
             <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
@@ -40,6 +41,11 @@ export function GameCard({ game, variant = 'store' }: GameCardProps) {
           {variant === 'store' && (
             <Badge className="bg-blood-500 text-white font-bold">${game.price}</Badge>
           )}
+        </div>
+        <div className="flex flex-wrap gap-1 mt-2">
+          {game.tags.slice(0, 2).map(tag => (
+            <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
+          ))}
         </div>
       </div>
       <div className={cn(

@@ -20,9 +20,12 @@ export function SearchPage() {
   const [selectedTags, setSelectedTags] = useState<GameTag[]>([]);
   const [priceRange, setPriceRange] = useState<[number]>([60]);
   const [sortOrder, setSortOrder] = useState('relevance');
-  const { data: gamesResponse, isLoading, isError } = useQuery({
+  const { data: gamesResponse, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['games'],
     queryFn: () => api<{ items: Game[] }>('/api/games'),
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    staleTime: 5 * 60 * 1000,
   });
   const handleTagChange = (tag: GameTag) => {
     setSelectedTags(prev =>
@@ -53,7 +56,15 @@ export function SearchPage() {
     return games;
   }, [gamesResponse, query, selectedTags, priceRange, sortOrder]);
   if (isError) {
-    return <div className="text-center text-red-500">Failed to load search results.</div>;
+    return (
+      <div className="text-center py-20">
+        <div className="text-red-500 mb-4 text-lg font-bold">Failed to load search results.</div>
+        {error && <p className="text-sm text-gray-400 mb-4">{error.message}</p>}
+        <Button onClick={() => refetch()} className="bg-blood-500 hover:bg-blood-600">
+          Retry
+        </Button>
+      </div>
+    );
   }
   return (
     <div className="animate-fade-in grid grid-cols-1 lg:grid-cols-4 gap-8">

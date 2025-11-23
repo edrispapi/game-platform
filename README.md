@@ -1,7 +1,5 @@
 # Crimson Grid: The Ultimate Gaming Nexus
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/edrispapi/crimson-grid)
-
 Crimson Grid is a sophisticated, feature-rich digital platform designed to be the central hub for gamers. It combines a digital game storefront, a personal game library, and comprehensive social features into a single, visually stunning interface. The platform is built with a 'Crimson Void' aesthetic, featuring a dark, tech-noir theme with striking crimson accents, creating an immersive and modern gaming environment.
 
 ## Key Features
@@ -93,5 +91,3 @@ This project is configured for seamless deployment to Cloudflare Pages.
     ```
 
 Alternatively, you can connect your GitHub repository to Cloudflare Pages for automatic deployments on every push.
-
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/edrispapi/crimson-grid)

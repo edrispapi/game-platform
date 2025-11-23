@@ -1,0 +1,7 @@
+name = "game-platform"
+main = "worker/index.ts"
+compatibility_date = "2024-01-01"
+
+# PostgreSQL Configuration
+[vars]
+DATABASE_URL = "export DATABASE_URL="postgresql://user:pass@host:5432/dbname""

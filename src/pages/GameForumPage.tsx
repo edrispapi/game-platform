@@ -11,95 +11,12 @@ import { MessageSquare, TrendingUp, Clock, User, ArrowLeft, Plus, ThumbsUp, Mess
 import { Link, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
-import { Game } from "@shared/types";
+import { Game, ForumPost, ForumReply } from "@shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { UserLink } from "@/components/UserLink";
 
-interface ForumPost {
-  id: string;
-  title: string;
-  content: string;
-  author: string;
-  authorAvatar: string;
-  createdAt: number;
-  replies: number;
-  views: number;
-  likes: number;
-  tags: string[];
-  pinned?: boolean;
-}
-
-interface ForumReply {
-  id: string;
-  postId: string;
-  content: string;
-  author: string;
-  authorAvatar: string;
-  createdAt: number;
-  likes: number;
-}
-
-const MOCK_POSTS: ForumPost[] = [
-  {
-    id: 'post-1',
-    title: 'Best build for Night City?',
-    content: 'Just started playing and wondering what the best build is for exploring Night City. Any recommendations?',
-    author: 'CyberNinja',
-    authorAvatar: 'https://i.pravatar.cc/150?u=cyberninja',
-    createdAt: Date.now() - 1000 * 60 * 30,
-    replies: 12,
-    views: 234,
-    likes: 8,
-    tags: ['Build', 'Guide'],
-    pinned: true,
-  },
-  {
-    id: 'post-2',
-    title: 'Ray tracing performance tips',
-    content: 'Found some great settings to improve RT performance without sacrificing too much visual quality.',
-    author: 'TechGamer',
-    authorAvatar: 'https://i.pravatar.cc/150?u=techgamer',
-    createdAt: Date.now() - 1000 * 60 * 60 * 2,
-    replies: 5,
-    views: 89,
-    likes: 15,
-    tags: ['Performance', 'Settings'],
-  },
-  {
-    id: 'post-3',
-    title: 'Favorite side quests?',
-    content: 'What are your favorite side quests in the game? I just finished the one with the AI taxi and it was amazing!',
-    author: 'QuestHunter',
-    authorAvatar: 'https://i.pravatar.cc/150?u=questhunter',
-    createdAt: Date.now() - 1000 * 60 * 60 * 5,
-    replies: 23,
-    views: 456,
-    likes: 32,
-    tags: ['Quests', 'Discussion'],
-  },
-];
-
-const MOCK_REPLIES: ForumReply[] = [
-  {
-    id: 'reply-1',
-    postId: 'post-1',
-    content: 'I recommend going with a netrunner build. Hacking is super fun and powerful!',
-    author: 'NetRunner',
-    authorAvatar: 'https://i.pravatar.cc/150?u=netrunner',
-    createdAt: Date.now() - 1000 * 60 * 25,
-    likes: 5,
-  },
-  {
-    id: 'reply-2',
-    postId: 'post-1',
-    content: 'Sandevistan build is OP for combat. Time slows down and you can clear rooms in seconds.',
-    author: 'Speedster',
-    authorAvatar: 'https://i.pravatar.cc/150?u=speedster',
-    createdAt: Date.now() - 1000 * 60 * 20,
-    likes: 7,
-  },
-];
 
 export function GameForumPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -115,36 +32,62 @@ export function GameForumPage() {
     enabled: !!slug,
   });
 
-  const posts = MOCK_POSTS;
-  const replies = selectedPost ? MOCK_REPLIES.filter(r => r.postId === selectedPost.id) : [];
+  const { data: postsResponse, isLoading: isLoadingPosts } = useQuery({
+    queryKey: ['forum-posts', slug],
+    queryFn: () => api<{ items: ForumPost[] }>(`/api/games/${slug}/forum/posts`),
+    enabled: !!slug,
+  });
+
+  const { data: repliesResponse, isLoading: isLoadingReplies } = useQuery({
+    queryKey: ['forum-replies', selectedPost?.id],
+    queryFn: () => api<{ items: ForumReply[] }>(`/api/forum/posts/${selectedPost?.id}/replies`),
+    enabled: !!selectedPost?.id,
+  });
+
+  const posts = postsResponse?.items ?? [];
+  const replies = repliesResponse?.items ?? [];
 
   const createPostMutation = useMutation({
     mutationFn: async () => {
-      // In a real app, this would call the API
-      await new Promise(resolve => setTimeout(resolve, 500));
-      return { success: true };
+      if (!slug) throw new Error('Game slug is required');
+      return api<ForumPost>(`/api/games/${slug}/forum/posts`, {
+        method: 'POST',
+        body: JSON.stringify({
+          title: newPostTitle,
+          content: newPostContent,
+          tags: [],
+        }),
+      });
     },
     onSuccess: () => {
       toast.success('Post created successfully!');
       setNewPostTitle('');
       setNewPostContent('');
+      queryClient.invalidateQueries({ queryKey: ['forum-posts', slug] });
     },
-    onError: () => {
-      toast.error('Failed to create post');
+    onError: (error: Error) => {
+      toast.error(`Failed to create post: ${error.message}`);
     },
   });
 
   const createReplyMutation = useMutation({
     mutationFn: async () => {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      return { success: true };
+      if (!selectedPost) throw new Error('Post is required');
+      return api<ForumReply>(`/api/forum/posts/${selectedPost.id}/replies`, {
+        method: 'POST',
+        body: JSON.stringify({
+          content: newReplyContent,
+        }),
+      });
     },
     onSuccess: () => {
       toast.success('Reply posted!');
       setNewReplyContent('');
+      queryClient.invalidateQueries({ queryKey: ['forum-replies', selectedPost?.id] });
+      queryClient.invalidateQueries({ queryKey: ['forum-posts', slug] });
     },
-    onError: () => {
-      toast.error('Failed to post reply');
+    onError: (error: Error) => {
+      toast.error(`Failed to post reply: ${error.message}`);
     },
   });
 
@@ -177,7 +120,9 @@ export function GameForumPage() {
                       <AvatarImage src={selectedPost.authorAvatar} />
                       <AvatarFallback>{selectedPost.author.substring(0, 2)}</AvatarFallback>
                     </Avatar>
-                    <span>{selectedPost.author}</span>
+                    <UserLink username={selectedPost.author}>
+                      {selectedPost.author}
+                    </UserLink>
                   </div>
                   <span>{formatDistanceToNow(new Date(selectedPost.createdAt), { addSuffix: true })}</span>
                   <span>{selectedPost.views} views</span>
@@ -188,7 +133,19 @@ export function GameForumPage() {
           <CardContent>
             <p className="text-gray-300 mb-6 whitespace-pre-wrap">{selectedPost.content}</p>
             <div className="flex items-center gap-4 pt-4 border-t border-void-700">
-              <Button variant="outline" size="sm" className="gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="gap-2"
+                onClick={() => {
+                  api(`/api/forum/posts/${selectedPost.id}/like`, { method: 'POST' })
+                    .then(() => {
+                      queryClient.invalidateQueries({ queryKey: ['forum-posts', slug] });
+                      queryClient.invalidateQueries({ queryKey: ['forum-replies', selectedPost.id] });
+                    })
+                    .catch(() => toast.error('Failed to like post'));
+                }}
+              >
                 <ThumbsUp className="h-4 w-4" /> {selectedPost.likes}
               </Button>
               <span className="text-sm text-gray-400">{selectedPost.replies} replies</span>
@@ -198,7 +155,12 @@ export function GameForumPage() {
 
         <div className="space-y-4">
           <h3 className="text-xl font-bold">Replies ({replies.length})</h3>
-          {replies.map(reply => (
+          {isLoadingReplies ? (
+            Array.from({ length: 2 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 w-full rounded-lg" />
+            ))
+          ) : replies.length > 0 ? (
+            replies.map(reply => (
             <Card key={reply.id} className="bg-void-800 border-void-700">
               <CardContent className="p-4">
                 <div className="flex items-start gap-4">
@@ -208,20 +170,36 @@ export function GameForumPage() {
                   </Avatar>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="font-bold">{reply.author}</span>
+                      <UserLink username={reply.author} className="font-bold">
+                        {reply.author}
+                      </UserLink>
                       <span className="text-xs text-gray-500">
                         {formatDistanceToNow(new Date(reply.createdAt), { addSuffix: true })}
                       </span>
                     </div>
                     <p className="text-gray-300">{reply.content}</p>
-                    <Button variant="ghost" size="sm" className="mt-2 gap-2">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="mt-2 gap-2"
+                      onClick={() => {
+                        api(`/api/forum/replies/${reply.id}/like`, { method: 'POST' })
+                          .then(() => {
+                            queryClient.invalidateQueries({ queryKey: ['forum-replies', selectedPost?.id] });
+                          })
+                          .catch(() => toast.error('Failed to like reply'));
+                      }}
+                    >
                       <ThumbsUp className="h-3 w-3" /> {reply.likes}
                     </Button>
                   </div>
                 </div>
               </CardContent>
             </Card>
-          ))}
+          ))
+          ) : (
+            <p className="text-center text-gray-400 py-10">No replies yet. Be the first to reply!</p>
+          )}
         </div>
 
         <Card className="bg-void-800 border-void-700">
@@ -272,7 +250,12 @@ export function GameForumPage() {
         </TabsList>
 
         <TabsContent value="posts" className="space-y-4">
-          {posts.map(post => (
+          {isLoadingPosts ? (
+            Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-32 w-full rounded-lg" />
+            ))
+          ) : posts.length > 0 ? (
+            posts.map(post => (
             <Card
               key={post.id}
               className="bg-void-800 border-void-700 hover:border-blood-500/50 transition-colors cursor-pointer"
@@ -294,7 +277,9 @@ export function GameForumPage() {
                     <div className="flex items-center gap-6 text-sm text-gray-500">
                       <div className="flex items-center gap-2">
                         <User className="h-4 w-4" />
-                        <span>{post.author}</span>
+                        <UserLink username={post.author}>
+                          {post.author}
+                        </UserLink>
                       </div>
                       <div className="flex items-center gap-2">
                         <Clock className="h-4 w-4" />
@@ -314,7 +299,10 @@ export function GameForumPage() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+          ))
+          ) : (
+            <p className="text-center text-gray-400 py-10">No posts yet. Be the first to create one!</p>
+          )}
         </TabsContent>
 
         <TabsContent value="create" className="space-y-4">

@@ -108,3 +108,48 @@ export interface Achievement {
     progress: number; // 0-100
     unlocked: boolean;
 }
+export interface ForumPost {
+  id: string;
+  gameSlug: string;
+  title: string;
+  content: string;
+  author: string;
+  authorId: string;
+  authorAvatar: string;
+  createdAt: number;
+  replies: number;
+  views: number;
+  likes: number;
+  tags: string[];
+  pinned?: boolean;
+}
+export interface ForumReply {
+  id: string;
+  postId: string;
+  content: string;
+  author: string;
+  authorId: string;
+  authorAvatar: string;
+  createdAt: number;
+  likes: number;
+}
+export interface WorkshopItem {
+  id: string;
+  gameSlug: string;
+  title: string;
+  description: string;
+  author: string;
+  authorId: string;
+  authorAvatar: string;
+  createdAt: number;
+  downloads: number;
+  rating: number;
+  tags: string[];
+  type: 'mod' | 'skin' | 'map' | 'tool';
+  image: string;
+  featured?: boolean;
+}
+export interface UserHoursByGenre {
+  genre: GameTag;
+  hours: number;
+}

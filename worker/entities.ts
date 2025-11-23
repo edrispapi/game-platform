@@ -1,6 +1,6 @@
 import { IndexedEntity } from "./core-utils";
-import type { Game, UserProfile, Friend, Order, Notification, FriendRequest, Achievement, ChatMessage } from "@shared/types";
-import { MOCK_GAMES, MOCK_USER_PROFILES, MOCK_FRIENDS, MOCK_NOTIFICATIONS, MOCK_FRIEND_REQUESTS, MOCK_ACHIEVEMENTS, MOCK_ORDERS, MOCK_CHAT_MESSAGES } from "@shared/mock-data";
+import type { Game, UserProfile, Friend, Order, Notification, FriendRequest, Achievement, ChatMessage, ForumPost, ForumReply, WorkshopItem } from "@shared/types";
+import { MOCK_GAMES, MOCK_USER_PROFILES, MOCK_FRIENDS, MOCK_NOTIFICATIONS, MOCK_FRIEND_REQUESTS, MOCK_ACHIEVEMENTS, MOCK_ORDERS, MOCK_CHAT_MESSAGES, MOCK_FORUM_POSTS, MOCK_FORUM_REPLIES, MOCK_WORKSHOP_ITEMS } from "@shared/mock-data";
 // GAME ENTITY: one DO instance per game
 export class GameEntity extends IndexedEntity<Game> {
   static readonly entityName = "game";
@@ -125,4 +125,61 @@ export class ChatMessageEntity extends IndexedEntity<ChatMessage> {
     ts: 0,
   };
   static seedData = MOCK_CHAT_MESSAGES;
+}
+// FORUM POST ENTITY: one DO instance per post
+export class ForumPostEntity extends IndexedEntity<ForumPost> {
+  static readonly entityName = "forumPost";
+  static readonly indexName = "forumPosts";
+  static readonly initialState: ForumPost = {
+    id: "",
+    gameSlug: "",
+    title: "",
+    content: "",
+    author: "",
+    authorId: "",
+    authorAvatar: "",
+    createdAt: 0,
+    replies: 0,
+    views: 0,
+    likes: 0,
+    tags: [],
+  };
+  static seedData = MOCK_FORUM_POSTS;
+}
+// FORUM REPLY ENTITY: one DO instance per reply
+export class ForumReplyEntity extends IndexedEntity<ForumReply> {
+  static readonly entityName = "forumReply";
+  static readonly indexName = "forumReplies";
+  static readonly initialState: ForumReply = {
+    id: "",
+    postId: "",
+    content: "",
+    author: "",
+    authorId: "",
+    authorAvatar: "",
+    createdAt: 0,
+    likes: 0,
+  };
+  static seedData = MOCK_FORUM_REPLIES;
+}
+// WORKSHOP ITEM ENTITY: one DO instance per item
+export class WorkshopItemEntity extends IndexedEntity<WorkshopItem> {
+  static readonly entityName = "workshopItem";
+  static readonly indexName = "workshopItems";
+  static readonly initialState: WorkshopItem = {
+    id: "",
+    gameSlug: "",
+    title: "",
+    description: "",
+    author: "",
+    authorId: "",
+    authorAvatar: "",
+    createdAt: 0,
+    downloads: 0,
+    rating: 0,
+    tags: [],
+    type: "mod",
+    image: "",
+  };
+  static seedData = MOCK_WORKSHOP_ITEMS;
 }

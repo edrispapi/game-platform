@@ -33,8 +33,15 @@ import { GameWorkshopPage } from '@/pages/GameWorkshopPage';
 import { SearchPage } from '@/pages/SearchPage';
 import { Toaster } from '@/components/ui/sonner';
 import { ThemeProvider } from '@/components/ThemeProvider';
+import { useUserStatus } from '@/hooks/use-user-status';
 // Set dark theme by default
 document.documentElement.classList.add('dark');
+
+// Component to handle user status updates
+function UserStatusManager() {
+  useUserStatus();
+  return null;
+}
 const router = createBrowserRouter([
   {
     path: "/",
@@ -88,6 +95,7 @@ export function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+          <UserStatusManager />
           <RouterProvider router={router} />
           <Toaster theme="dark" richColors closeButton />
         </ThemeProvider>

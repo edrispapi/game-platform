@@ -37,7 +37,7 @@ export function ChatPage() {
     queryKey: ['chat-messages', id],
     queryFn: () => api<ChatMessage[]>(`/api/chats/${id}/messages`),
     enabled: !!id,
-    refetchInterval: 2000, // Poll for new messages every 2 seconds
+    refetchInterval: 1000, // Poll for new messages every 1 second for real-time feel
   });
 
   const sendMessageMutation = useMutation({

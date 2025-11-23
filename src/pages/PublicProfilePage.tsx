@@ -8,11 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Clock, Trophy, Users, UserPlus, Check } from "lucide-react";
+import { Clock, Trophy, Users, UserPlus, Check, Ban } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { GameCard } from "@/components/GameCard";
 import { toast } from "sonner";
 export function PublicProfilePage() {
   const { username } = useParams<{ username: string }>();
+  const queryClient = useQueryClient();
   const { data: profile, isLoading: isLoadingProfile, isError: isProfileError } = useQuery<UserProfile>({
     queryKey: ['publicProfile', username],
     queryFn: () => api(`/api/user/${username}`),
@@ -29,14 +31,35 @@ export function PublicProfilePage() {
     }),
     onSuccess: () => {
       toast.success(`Friend request sent to ${profile?.username}!`);
+      queryClient.invalidateQueries({ queryKey: ['friend-requests'] });
     },
     onError: (error) => {
       toast.error(`Failed to send friend request: ${error.message}`);
     },
   });
+  const blockUserMutation = useMutation({
+    mutationFn: (targetUserId: string) => api('/api/users/block', {
+      method: 'POST',
+      body: JSON.stringify({ userId: targetUserId }),
+    }),
+    onSuccess: () => {
+      toast.success(`User ${profile?.username} has been blocked.`);
+      queryClient.invalidateQueries({ queryKey: ['blocked'] });
+    },
+    onError: (error) => {
+      toast.error(`Failed to block user: ${error.message}`);
+    },
+  });
   const handleAddFriend = () => {
     if (profile?.username) {
       addFriendMutation.mutate(profile.username);
+    }
+  };
+  const handleBlockUser = () => {
+    if (profile?.id) {
+      if (confirm(`Are you sure you want to block ${profile.username}?`)) {
+        blockUserMutation.mutate(profile.id);
+      }
     }
   };
   const favoriteGames = gamesResponse?.items.filter(game => profile?.favoriteGames.includes(game.slug)) ?? [];
@@ -87,21 +110,30 @@ export function PublicProfilePage() {
               </Badge>
             </div>
           </div>
-          <Button
-            className="ml-auto bg-blood-500 hover:bg-blood-600 disabled:bg-green-600 disabled:opacity-100"
-            onClick={handleAddFriend}
-            disabled={addFriendMutation.isPending || addFriendMutation.isSuccess}
-          >
-            {addFriendMutation.isSuccess ? (
-              <>
-                <Check className="mr-2 h-4 w-4" /> Request Sent
-              </>
-            ) : (
-              <>
-                <UserPlus className="mr-2 h-4 w-4" /> Add Friend
-              </>
-            )}
-          </Button>
+          <div className="ml-auto flex gap-2">
+            <Button
+              className="bg-blood-500 hover:bg-blood-600 disabled:bg-green-600 disabled:opacity-100"
+              onClick={handleAddFriend}
+              disabled={addFriendMutation.isPending || addFriendMutation.isSuccess}
+            >
+              {addFriendMutation.isSuccess ? (
+                <>
+                  <Check className="mr-2 h-4 w-4" /> Request Sent
+                </>
+              ) : (
+                <>
+                  <UserPlus className="mr-2 h-4 w-4" /> Add Friend
+                </>
+              )}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleBlockUser}
+              disabled={blockUserMutation.isPending}
+            >
+              <Ban className="mr-2 h-4 w-4" /> Block
+            </Button>
+          </div>
         </CardContent>
       </Card>
       <div>

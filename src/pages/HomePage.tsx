@@ -4,9 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { motion } from "framer-motion";
-import { MOCK_GAMES } from "@shared/mock-data";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api-client";
+import { Game } from "@shared/types";
+import { Skeleton } from "@/components/ui/skeleton";
 export function HomePage() {
-  const featuredGames = MOCK_GAMES.slice(0, 3);
+  const { data: gamesResponse, isLoading } = useQuery({
+    queryKey: ['games'],
+    queryFn: () => api<{ items: Game[] }>('/api/games'),
+  });
+  const featuredGames = gamesResponse?.items.slice(0, 3) ?? [];
   return (
     <div className="min-h-screen bg-void-950 text-white overflow-x-hidden">
       {/* Hero Section */}
@@ -57,23 +64,27 @@ export function HomePage() {
                 <CardTitle className="text-4xl font-orbitron text-blood-500 text-center">Featured Games</CardTitle>
               </CardHeader>
               <CardContent>
-                <Carousel opts={{ loop: true }} className="w-full max-w-5xl mx-auto">
-                  <CarouselContent>
-                    {featuredGames.map((game) => (
-                      <CarouselItem key={game.id}>
-                        <Link to={`/game/${game.slug}`}>
-                          <div className="aspect-video relative rounded-lg overflow-hidden">
-                            <img src={game.bannerImage} alt={game.title} className="w-full h-full object-cover" />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-                            <h3 className="absolute bottom-4 left-4 font-orbitron text-3xl font-bold">{game.title}</h3>
-                          </div>
-                        </Link>
-                      </CarouselItem>
-                    ))}
-                  </CarouselContent>
-                  <CarouselPrevious className="left-[-50px]" />
-                  <CarouselNext className="right-[-50px]" />
-                </Carousel>
+                {isLoading ? (
+                  <Skeleton className="w-full aspect-video rounded-lg" />
+                ) : (
+                  <Carousel opts={{ loop: true }} className="w-full max-w-5xl mx-auto">
+                    <CarouselContent>
+                      {featuredGames.map((game) => (
+                        <CarouselItem key={game.id}>
+                          <Link to={`/game/${game.slug}`}>
+                            <div className="aspect-video relative rounded-lg overflow-hidden">
+                              <img src={game.bannerImage} alt={game.title} className="w-full h-full object-cover" />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
+                              <h3 className="absolute bottom-4 left-4 font-orbitron text-3xl font-bold">{game.title}</h3>
+                            </div>
+                          </Link>
+                        </CarouselItem>
+                      ))}
+                    </CarouselContent>
+                    <CarouselPrevious className="left-[-50px]" />
+                    <CarouselNext className="right-[-50px]" />
+                  </Carousel>
+                )}
               </CardContent>
             </Card>
           </motion.div>

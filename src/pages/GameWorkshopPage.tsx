@@ -10,88 +10,19 @@ import { Download, Star, Calendar, User, ArrowLeft, Plus, Filter, Search, Trendi
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
-import { Game } from "@shared/types";
+import { Game, WorkshopItem } from "@shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-
-interface WorkshopItem {
-  id: string;
-  title: string;
-  description: string;
-  author: string;
-  authorAvatar: string;
-  createdAt: number;
-  downloads: number;
-  rating: number;
-  tags: string[];
-  type: 'mod' | 'skin' | 'map' | 'tool';
-  image: string;
-  featured?: boolean;
-}
-
-const MOCK_WORKSHOP_ITEMS: WorkshopItem[] = [
-  {
-    id: 'item-1',
-    title: 'Enhanced Graphics Mod',
-    description: 'Improves textures, lighting, and overall visual quality. Compatible with all DLCs.',
-    author: 'ModMaster',
-    authorAvatar: 'https://i.pravatar.cc/150?u=modmaster',
-    createdAt: Date.now() - 1000 * 60 * 60 * 24,
-    downloads: 15420,
-    rating: 4.8,
-    tags: ['Graphics', 'Visual'],
-    type: 'mod',
-    image: '/images/cyberpunk-banner.svg',
-    featured: true,
-  },
-  {
-    id: 'item-2',
-    title: 'Neon City Skin Pack',
-    description: 'A collection of vibrant neon-themed skins for weapons and vehicles.',
-    author: 'SkinCreator',
-    authorAvatar: 'https://i.pravatar.cc/150?u=skincreator',
-    createdAt: Date.now() - 1000 * 60 * 60 * 48,
-    downloads: 8920,
-    rating: 4.6,
-    tags: ['Skins', 'Cosmetic'],
-    type: 'skin',
-    image: '/images/cyberpunk-shot1.svg',
-  },
-  {
-    id: 'item-3',
-    title: 'Custom Night City Map',
-    description: 'Explore a completely redesigned Night City with new districts and hidden areas.',
-    author: 'MapBuilder',
-    authorAvatar: 'https://i.pravatar.cc/150?u=mapbuilder',
-    createdAt: Date.now() - 1000 * 60 * 60 * 72,
-    downloads: 12340,
-    rating: 4.9,
-    tags: ['Map', 'Exploration'],
-    type: 'map',
-    image: '/images/cyberpunk-shot2.svg',
-    featured: true,
-  },
-  {
-    id: 'item-4',
-    title: 'Performance Optimizer Tool',
-    description: 'Automatically adjusts settings for optimal performance on your hardware.',
-    author: 'TechWizard',
-    authorAvatar: 'https://i.pravatar.cc/150?u=techwizard',
-    createdAt: Date.now() - 1000 * 60 * 60 * 96,
-    downloads: 21560,
-    rating: 4.7,
-    tags: ['Tool', 'Performance'],
-    type: 'tool',
-    image: '/images/cyberpunk-shot3.svg',
-  },
-];
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { UserLink } from "@/components/UserLink";
 
 export function GameWorkshopPage() {
   const { slug } = useParams<{ slug: string }>();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'popular' | 'recent' | 'rating'>('popular');
+  const queryClient = useQueryClient();
 
   const { data: game, isLoading: isLoadingGame } = useQuery({
     queryKey: ['game', slug],
@@ -99,7 +30,27 @@ export function GameWorkshopPage() {
     enabled: !!slug,
   });
 
-  const filteredItems = MOCK_WORKSHOP_ITEMS.filter(item => {
+  const { data: itemsResponse, isLoading: isLoadingItems } = useQuery({
+    queryKey: ['workshop-items', slug],
+    queryFn: () => api<{ items: WorkshopItem[] }>(`/api/games/${slug}/workshop/items`),
+    enabled: !!slug,
+  });
+
+  const downloadMutation = useMutation({
+    mutationFn: (itemId: string) => api(`/api/workshop/items/${itemId}/download`, {
+      method: 'POST',
+    }),
+    onSuccess: () => {
+      toast.success('Download started!');
+      queryClient.invalidateQueries({ queryKey: ['workshop-items', slug] });
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to download: ${error.message}`);
+    },
+  });
+
+  const allItems = itemsResponse?.items ?? [];
+  const filteredItems = allItems.filter(item => {
     const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesType = selectedType === 'all' || item.type === selectedType;
@@ -175,6 +126,14 @@ export function GameWorkshopPage() {
         </TabsList>
 
         <TabsContent value="browse" className="space-y-6">
+          {isLoadingItems ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-64 w-full rounded-lg" />
+              ))}
+            </div>
+          ) : (
+            <>
           {featuredItems.length > 0 && (
             <div>
               <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
@@ -206,7 +165,9 @@ export function GameWorkshopPage() {
                             <AvatarImage src={item.authorAvatar} />
                             <AvatarFallback>{item.author.substring(0, 2)}</AvatarFallback>
                           </Avatar>
-                          <span>{item.author}</span>
+                          <UserLink username={item.author}>
+                          {item.author}
+                        </UserLink>
                         </div>
                         <span>{formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</span>
                       </div>
@@ -217,7 +178,12 @@ export function GameWorkshopPage() {
                             <span>{item.downloads.toLocaleString()}</span>
                           </div>
                         </div>
-                        <Button size="sm" className="bg-blood-500 hover:bg-blood-600">
+                        <Button 
+                          size="sm" 
+                          className="bg-blood-500 hover:bg-blood-600"
+                          onClick={() => downloadMutation.mutate(item.id)}
+                          disabled={downloadMutation.isPending}
+                        >
                           <Download className="mr-2 h-4 w-4" /> Download
                         </Button>
                       </div>
@@ -259,7 +225,9 @@ export function GameWorkshopPage() {
                           <AvatarImage src={item.authorAvatar} />
                           <AvatarFallback>{item.author.substring(0, 2)}</AvatarFallback>
                         </Avatar>
-                        <span>{item.author}</span>
+                        <UserLink username={item.author}>
+                          {item.author}
+                        </UserLink>
                       </div>
                       <span>{formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</span>
                     </div>
@@ -288,10 +256,19 @@ export function GameWorkshopPage() {
               <p>No items found matching your criteria.</p>
             </div>
           )}
+          </>
+          )}
         </TabsContent>
 
         <TabsContent value="featured" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {isLoadingItems ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-64 w-full rounded-lg" />
+              ))}
+            </div>
+          ) : featuredItems.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {featuredItems.map(item => (
               <Card key={item.id} className="bg-void-800 border-void-700 hover:border-blood-500/50 transition-colors">
                 <div className="relative h-48 overflow-hidden rounded-t-lg">
@@ -323,6 +300,9 @@ export function GameWorkshopPage() {
               </Card>
             ))}
           </div>
+          ) : (
+            <p className="text-center text-gray-400 py-10">No featured items yet.</p>
+          )}
         </TabsContent>
 
         <TabsContent value="upload" className="space-y-4">
