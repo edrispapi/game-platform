@@ -57,7 +57,7 @@ Follow these instructions to get a local copy of the project up and running for 
 The project is organized into three main directories:
 
 -   `src/`: Contains the frontend React application, including pages, components, hooks, and utility functions.
--   `worker/`: Contains the Cloudflare Worker backend code, built with Hono. This is where API routes and business logic reside.
+-   `worker/`: Contains the API routes written with Hono plus database helpers shared by the local server.
 -   `shared/`: Contains shared types and data structures used by both the frontend and the backend to ensure type safety.
 
 ## Development
@@ -68,26 +68,16 @@ The frontend is a standard React (Vite) application. You can create new pages in
 
 ### Backend
 
-The backend is a Hono application running on Cloudflare Workers. API endpoints are defined in `worker/user-routes.ts`. Data persistence is managed through a single `GlobalDurableObject` which provides a KV-like storage interface for different data entities.
+The backend now runs as a Bun-powered server (`server/index.ts`) that mounts the Hono routes defined in `worker/user-routes.ts`. All persistence goes through PostgreSQL via the helpers in `worker/db`. Set `DATABASE_URL` (and optionally `DATABASE_API_KEY` / `DEFAULT_USER_ID`) before starting the API server.
 
-To add a new API endpoint:
-1.  Define your entity logic in `worker/entities.ts`.
-2.  Add the new route handler in `worker/user-routes.ts` using the Hono app instance.
+To run the API locally:
+
+```bash
+bun run api
+```
+
+To add a new API endpoint simply update `worker/user-routes.ts` and, if necessary, add supporting queries inside `worker/db`.
 
 ## Deployment
 
-This project is configured for seamless deployment to Cloudflare Pages.
-
-1.  **Build the project:**
-    This command bundles the frontend application and prepares the worker for deployment.
-    ```bash
-    bun build
-    ```
-
-2.  **Deploy to Cloudflare:**
-    Run the deploy script, which uses Wrangler to publish your application.
-    ```bash
-    bun deploy
-    ```
-
-Alternatively, you can connect your GitHub repository to Cloudflare Pages for automatic deployments on every push.
+Build the frontend with `bun run build` and host the generated `dist/` directory with your preferred static host. Run the Bun API server (`bun run api`) alongside it on your infrastructure of choice (Docker, systemd service, etc.). Ensure the API server has network access to your PostgreSQL instance.

@@ -85,12 +85,22 @@ export function generateGames(): any[] {
   const games = [];
   const startDate = new Date('2020-01-01');
   const endDate = new Date();
+  const slugCounts = new Map<string, number>();
   
   for (let i = 0; i < 100; i++) {
-    const title = GAME_TITLES[i % GAME_TITLES.length] + (i > GAME_TITLES.length ? ` ${Math.floor(i / GAME_TITLES.length) + 1}` : '');
-    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const baseTitle = GAME_TITLES[i % GAME_TITLES.length];
+    const baseSlug = baseTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const currentCount = slugCounts.get(baseSlug) ?? 0;
+    const nextCount = currentCount + 1;
+    slugCounts.set(baseSlug, nextCount);
+    
+    const slug = nextCount === 1 ? baseSlug : `${baseSlug}-${nextCount}`;
+    const title = nextCount === 1 ? baseTitle : `${baseTitle} ${nextCount}`;
     const tags = Array.from({ length: randomInt(2, 4) }, () => randomElement(GAME_TAGS));
     const price = parseFloat((randomFloat(9.99, 79.99)).toFixed(2));
+    const encodedTitle = encodeURIComponent(title);
+    const coverImage = `https://dummyimage.com/600x800/050505/ff0000&text=${encodedTitle}`;
+    const bannerImage = `https://dummyimage.com/1600x900/050505/ff0000&text=${encodedTitle}+Banner`;
     
     games.push({
       id: generateUUID(),
@@ -98,8 +108,8 @@ export function generateGames(): any[] {
       title,
       description: `Experience the ultimate ${title} adventure. Immerse yourself in a world of ${tags[0].toLowerCase()} gameplay, stunning graphics, and endless possibilities.`,
       price,
-      cover_image_url: `/images/games/${slug}-cover.svg`,
-      banner_image_url: `/images/games/${slug}-banner.svg`,
+      cover_image_url: coverImage,
+      banner_image_url: bannerImage,
       created_at: randomDate(startDate, endDate).toISOString(),
       tags: tags.map(tag => ({ game_id: null, tag })), // Will be set after game creation
     });
@@ -262,7 +272,7 @@ export function generateWorkshopItems(users: any[], games: any[]): any[] {
   for (let i = 0; i < 200; i++) {
     const game = randomElement(games);
     const user = randomElement(users);
-    const type = randomElement(WORKSHOP_TYPES);
+      const type = randomElement(WORKSHOP_TYPES);
     
     items.push({
       id: generateUUID(),
@@ -271,7 +281,7 @@ export function generateWorkshopItems(users: any[], games: any[]): any[] {
       title: randomElement(titles),
       description: `A ${type} for ${game.title} that enhances your gaming experience.`,
       type,
-      image_url: `/images/workshop/${generateUUID()}.svg`,
+      image_url: `https://dummyimage.com/800x600/050505/ff0000&text=${encodeURIComponent(game.title + ' Workshop')}`,
       file_url: `https://workshop.example.com/files/${generateUUID()}.zip`,
       downloads: randomInt(0, 10000),
       rating: parseFloat((randomFloat(3.0, 5.0)).toFixed(2)),
@@ -289,17 +299,21 @@ export function generateFriends(users: any[]): any[] {
   const usedPairs = new Set<string>();
   
   for (let i = 0; i < 300; i++) {
-    let user1, user2;
-    let pairKey: string;
+    let user1, user2, pairKey: string;
     
-    do {
+    while (true) {
       user1 = randomElement(users);
       user2 = randomElement(users);
-      if (user1.id === user2.id) continue;
+      if (user1.id === user2.id) {
+        continue;
+      }
       pairKey = [user1.id, user2.id].sort().join('-');
-    } while (usedPairs.has(pairKey));
-    
-    usedPairs.add(pairKey);
+      if (usedPairs.has(pairKey)) {
+        continue;
+      }
+      usedPairs.add(pairKey);
+      break;
+    }
     
     const status = randomElement(['Online', 'Offline', 'In Game'] as const);
     

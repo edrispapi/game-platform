@@ -5,11 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port ${PORT:-3000}",
+    "api": "bun --watch server/index.ts",
     "build": "vite build",
     "lint": "eslint --cache -f json --quiet .",
-    "preview": "bun run build && vite preview --host 0.0.0.0 --port ${PORT:-4173}",
-    "server": "bun run server/index.ts",
-    "server:dev": "bun --watch server/index.ts"
+    "preview": "bun run build && vite preview --host 0.0.0.0 --port ${PORT:-4173}"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.2.0",

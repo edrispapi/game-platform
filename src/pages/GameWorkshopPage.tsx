@@ -321,7 +321,7 @@ export function GameWorkshopPage() {
                 <Button className="mt-4 bg-blood-500 hover:bg-blood-600" disabled>
                   <Plus className="mr-2 h-4 w-4" />
                   Upload Item
-                </Button>
+      </Button>
               </div>
             </CardContent>
           </Card>

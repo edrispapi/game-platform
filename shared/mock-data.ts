@@ -404,5 +404,5 @@ export const MOCK_ORDERS: Order[] = [
     ],
     total: 49.98,
     createdAt: minutesAgo(720),
-  },
+    },
 ];

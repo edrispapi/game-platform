@@ -111,21 +111,21 @@ export function PublicProfilePage() {
             </div>
           </div>
           <div className="ml-auto flex gap-2">
-            <Button
+          <Button
               className="bg-blood-500 hover:bg-blood-600 disabled:bg-green-600 disabled:opacity-100"
-              onClick={handleAddFriend}
-              disabled={addFriendMutation.isPending || addFriendMutation.isSuccess}
-            >
-              {addFriendMutation.isSuccess ? (
-                <>
-                  <Check className="mr-2 h-4 w-4" /> Request Sent
-                </>
-              ) : (
-                <>
-                  <UserPlus className="mr-2 h-4 w-4" /> Add Friend
-                </>
-              )}
-            </Button>
+            onClick={handleAddFriend}
+            disabled={addFriendMutation.isPending || addFriendMutation.isSuccess}
+          >
+            {addFriendMutation.isSuccess ? (
+              <>
+                <Check className="mr-2 h-4 w-4" /> Request Sent
+              </>
+            ) : (
+              <>
+                <UserPlus className="mr-2 h-4 w-4" /> Add Friend
+              </>
+            )}
+          </Button>
             <Button
               variant="destructive"
               onClick={handleBlockUser}

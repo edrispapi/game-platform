@@ -75,8 +75,7 @@ CREATE TABLE game_requirements (
   processor VARCHAR(255),
   memory VARCHAR(255),
   graphics VARCHAR(255),
-  storage VARCHAR(255),
-  PRIMARY KEY (game_id)
+  storage VARCHAR(255)
 );
 
 -- Game Reviews

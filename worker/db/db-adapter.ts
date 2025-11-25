@@ -1,93 +1,54 @@
-// Database Adapter - PostgreSQL only
 import { PostgresService } from './postgres-service';
-import type { Game, UserProfile, Friend, Order, Notification, FriendRequest, Achievement, ChatMessage, ForumPost, ForumReply, WorkshopItem } from '@shared/types';
-
-interface Env {
-  DATABASE_URL?: string;
-  DATABASE_API_KEY?: string;
-}
+import { resolveEnv, type DatabaseEnv } from './types';
 
 export class DatabaseAdapter {
-  private postgres: PostgresService;
-  
-  constructor(env: Env) {
-    if (!env.DATABASE_URL) {
-      throw new Error('DATABASE_URL is required');
+  private static cachedDefaultUserId: string | null = null;
+  private readonly service: PostgresService;
+  private readonly env: ReturnType<typeof resolveEnv>;
+
+  constructor(env: DatabaseEnv) {
+    this.env = resolveEnv(env);
+    this.service = new PostgresService(this.env);
+  }
+
+  query<T = any>(sql: string, params: any[] = []) {
+    return this.service.query<T>(sql, params);
+  }
+
+  queryOne<T = any>(sql: string, params: any[] = []) {
+    return this.service.queryOne<T>(sql, params);
+  }
+
+  execute(sql: string, params: any[] = []) {
+    return this.service.execute(sql, params);
+  }
+
+  get databaseUrl() {
+    return this.env.DATABASE_URL;
+  }
+
+  get defaultUserIdFromEnv() {
+    return this.env.DEFAULT_USER_ID;
+  }
+
+  async getDefaultUserId() {
+    if (this.env.DEFAULT_USER_ID) {
+      return this.env.DEFAULT_USER_ID;
     }
-    this.postgres = new PostgresService(env);
-  }
-  
-  // Games
-  async getGames(filters?: { tag?: string; search?: string; sort?: string; minPrice?: number; maxPrice?: number }): Promise<{ items: Game[] }> {
-    const games = await this.postgres.getGames(filters);
-    console.log(`[PostgreSQL] Retrieved ${games.length} games`);
-    return { items: games as any[] };
-  }
-  
-  async getGameBySlug(slug: string): Promise<Game | null> {
-    return await this.postgres.getGameBySlug(slug) as any;
-  }
-  
-  // Users
-  async getUser(id: string): Promise<UserProfile | null> {
-    return await this.postgres.getUser(id) as any;
-  }
-  
-  async getUserByUsername(username: string): Promise<UserProfile | null> {
-    return await this.postgres.getUserByUsername(username) as any;
-  }
-  
-  async searchUsers(query: string, limit: number = 10): Promise<UserProfile[]> {
-    return await this.postgres.searchUsers(query, limit) as any[];
-  }
-  
-  async updateUserStatus(userId: string, status: string, gameSlug?: string): Promise<void> {
-    await this.postgres.updateUserStatus(userId, status, gameSlug);
-  }
-  
-  // Friends
-  async getFriends(userId: string = 'user-1'): Promise<{ items: Friend[] }> {
-    const friends = await this.postgres.getFriends(userId);
-    return { items: friends as any[] };
-  }
-  
-  // Forum Posts
-  async getForumPosts(gameSlug: string): Promise<ForumPost[]> {
-    return await this.postgres.getForumPosts(gameSlug) as any[];
-  }
-  
-  async createForumPost(gameSlug: string, userId: string, title: string, content: string, tags: string[] = []): Promise<ForumPost> {
-    return await this.postgres.createForumPost(gameSlug, userId, title, content, tags) as any;
-  }
-  
-  // Forum Replies
-  async getForumReplies(postId: string): Promise<ForumReply[]> {
-    return await this.postgres.getForumReplies?.(postId) as any[] || [];
-  }
-  
-  // Workshop Items
-  async getWorkshopItems(gameSlug: string, filters?: { type?: string; search?: string }): Promise<WorkshopItem[]> {
-    return await this.postgres.getWorkshopItems(gameSlug, filters) as any[];
-  }
-  
-  // Chat Messages
-  async getChatMessages(chatId: string): Promise<ChatMessage[]> {
-    // TODO: Implement in PostgresService
-    return [];
-  }
-  
-  async createChatMessage(chatId: string, userId: string, text: string): Promise<ChatMessage> {
-    // TODO: Implement in PostgresService
-    throw new Error('Chat messages not implemented in PostgreSQL yet');
-  }
-  
-  // Friend Requests
-  async getFriendRequests(): Promise<{ items: FriendRequest[] }> {
-    // TODO: Implement in PostgresService
-    return { items: [] };
-  }
-  
-  async createFriendRequest(senderId: string, receiverUsername: string): Promise<FriendRequest> {
-    return await this.postgres.createFriendRequest(senderId, receiverUsername) as any;
+
+    if (DatabaseAdapter.cachedDefaultUserId) {
+      return DatabaseAdapter.cachedDefaultUserId;
+    }
+
+    const row = await this.queryOne<{ id: string }>(
+      'SELECT id FROM users ORDER BY created_at ASC LIMIT 1'
+    );
+
+    if (!row?.id) {
+      throw new Error('No users exist in the database. Seed data before using the API.');
+    }
+
+    DatabaseAdapter.cachedDefaultUserId = row.id;
+    return row.id;
   }
 }

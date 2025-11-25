@@ -1,5 +1,5 @@
 'use client';
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,6 +24,8 @@ export function GameForumPage() {
   const [newPostTitle, setNewPostTitle] = useState('');
   const [newPostContent, setNewPostContent] = useState('');
   const [newReplyContent, setNewReplyContent] = useState('');
+  const [likedPost, setLikedPost] = useState(false);
+  const [likedReplies, setLikedReplies] = useState<Record<string, boolean>>({});
   const queryClient = useQueryClient();
 
   const { data: game, isLoading: isLoadingGame } = useQuery({
@@ -46,6 +48,11 @@ export function GameForumPage() {
 
   const posts = postsResponse?.items ?? [];
   const replies = repliesResponse?.items ?? [];
+
+  const totalRepliesForSelectedPost = useMemo(
+    () => (selectedPost ? replies.length : 0),
+    [selectedPost, replies]
+  );
 
   const createPostMutation = useMutation({
     mutationFn: async () => {
@@ -138,17 +145,24 @@ export function GameForumPage() {
                 size="sm" 
                 className="gap-2"
                 onClick={() => {
+                  if (likedPost) return;
+                  setLikedPost(true);
                   api(`/api/forum/posts/${selectedPost.id}/like`, { method: 'POST' })
                     .then(() => {
                       queryClient.invalidateQueries({ queryKey: ['forum-posts', slug] });
-                      queryClient.invalidateQueries({ queryKey: ['forum-replies', selectedPost.id] });
                     })
-                    .catch(() => toast.error('Failed to like post'));
+                    .catch(() => {
+                      setLikedPost(false);
+                      toast.error('Failed to like post');
+                    });
                 }}
+                disabled={likedPost}
               >
-                <ThumbsUp className="h-4 w-4" /> {selectedPost.likes}
+                <ThumbsUp className="h-4 w-4" /> {selectedPost.likes + (likedPost ? 1 : 0)}
               </Button>
-              <span className="text-sm text-gray-400">{selectedPost.replies} replies</span>
+              <span className="text-sm text-gray-400">
+                {totalRepliesForSelectedPost} replies
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -183,14 +197,24 @@ export function GameForumPage() {
                       size="sm" 
                       className="mt-2 gap-2"
                       onClick={() => {
+                        if (likedReplies[reply.id]) return;
+                        setLikedReplies((prev) => ({ ...prev, [reply.id]: true }));
                         api(`/api/forum/replies/${reply.id}/like`, { method: 'POST' })
                           .then(() => {
                             queryClient.invalidateQueries({ queryKey: ['forum-replies', selectedPost?.id] });
                           })
-                          .catch(() => toast.error('Failed to like reply'));
+                          .catch(() => {
+                            setLikedReplies((prev) => {
+                              const next = { ...prev };
+                              delete next[reply.id];
+                              return next;
+                            });
+                            toast.error('Failed to like reply');
+                          });
                       }}
+                      disabled={likedReplies[reply.id]}
                     >
-                      <ThumbsUp className="h-3 w-3" /> {reply.likes}
+                      <ThumbsUp className="h-3 w-3" /> {reply.likes + (likedReplies[reply.id] ? 1 : 0)}
                     </Button>
                   </div>
                 </div>
@@ -330,7 +354,7 @@ export function GameForumPage() {
               >
                 <Plus className="mr-2 h-4 w-4" />
                 {createPostMutation.isPending ? 'Creating...' : 'Create Post'}
-              </Button>
+      </Button>
             </CardContent>
           </Card>
         </TabsContent>

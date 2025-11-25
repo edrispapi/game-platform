@@ -67,23 +67,23 @@ export function HomePage() {
                 {isLoading ? (
                   <Skeleton className="w-full aspect-video rounded-lg" />
                 ) : (
-                  <Carousel opts={{ loop: true }} className="w-full max-w-5xl mx-auto">
-                    <CarouselContent>
-                      {featuredGames.map((game) => (
-                        <CarouselItem key={game.id}>
-                          <Link to={`/game/${game.slug}`}>
-                            <div className="aspect-video relative rounded-lg overflow-hidden">
-                              <img src={game.bannerImage} alt={game.title} className="w-full h-full object-cover" />
-                              <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-                              <h3 className="absolute bottom-4 left-4 font-orbitron text-3xl font-bold">{game.title}</h3>
-                            </div>
-                          </Link>
-                        </CarouselItem>
-                      ))}
-                    </CarouselContent>
-                    <CarouselPrevious className="left-[-50px]" />
-                    <CarouselNext className="right-[-50px]" />
-                  </Carousel>
+                <Carousel opts={{ loop: true }} className="w-full max-w-5xl mx-auto">
+                  <CarouselContent>
+                    {featuredGames.map((game) => (
+                      <CarouselItem key={game.id}>
+                        <Link to={`/game/${game.slug}`}>
+                          <div className="aspect-video relative rounded-lg overflow-hidden">
+                            <img src={game.bannerImage} alt={game.title} className="w-full h-full object-cover" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
+                            <h3 className="absolute bottom-4 left-4 font-orbitron text-3xl font-bold">{game.title}</h3>
+                          </div>
+                        </Link>
+                      </CarouselItem>
+                    ))}
+                  </CarouselContent>
+                  <CarouselPrevious className="left-[-50px]" />
+                  <CarouselNext className="right-[-50px]" />
+                </Carousel>
                 )}
               </CardContent>
             </Card>

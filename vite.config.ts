@@ -87,6 +87,8 @@ function watchDependenciesPlugin() {
 // https://vite.dev/config/
 export default ({ mode }: { mode: string }) => {
   const env = loadEnv(mode, process.cwd());
+  const defaultApiPort = env.VITE_API_PORT || process.env.API_PORT || '8877';
+  const apiTarget = env.VITE_API_URL || `http://localhost:${defaultApiPort}`;
   return defineConfig({
     plugins: [react(), watchDependenciesPlugin()],
     build: {
@@ -105,6 +107,12 @@ export default ({ mode }: { mode: string }) => {
     },
     server: {
       allowedHosts: true,
+      proxy: {
+        '/api': {
+          target: apiTarget,
+          changeOrigin: true,
+        },
+      },
     },
     resolve: {
       alias: {

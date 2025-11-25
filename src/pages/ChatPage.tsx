@@ -98,13 +98,13 @@ export function ChatPage() {
             <Link to="/friends">
               <ArrowLeft className="h-5 w-5" />
             </Link>
-          </Button>
+        </Button>
           <Avatar className="h-10 w-10 shrink-0 border-2 border-blood-500/50">
             <AvatarImage src={friend.avatar} alt={friend.username} />
             <AvatarFallback className="bg-blood-500/20 text-blood-400">
               {friend.username.substring(0, 2).toUpperCase()}
             </AvatarFallback>
-          </Avatar>
+        </Avatar>
           <div className="flex-1 min-w-0">
             <h2 className="font-bold text-lg truncate">{friend.username}</h2>
             <div className="flex items-center gap-2">
@@ -207,7 +207,7 @@ export function ChatPage() {
                 </div>
               );
             })}
-          </div>
+        </div>
         )}
       </ScrollArea>
 

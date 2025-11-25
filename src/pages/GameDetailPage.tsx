@@ -159,7 +159,7 @@ export function GameDetailPage() {
                             <p className="text-lg mb-2">No trailer available</p>
                             <p className="text-sm text-gray-500">Trailer video will be available soon</p>
                         </div>
-                    </div>
+                </div>
                 )}
             </div>
             <div>

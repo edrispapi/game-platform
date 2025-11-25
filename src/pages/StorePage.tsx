@@ -216,32 +216,9 @@ export function StorePage() {
           {isLoading ? (
             Array.from({ length: 10 }).map((_, i) => <Skeleton key={i} className="aspect-[3/4] rounded-lg" />)
           ) : filteredAndSortedGames.length > 0 ? (
-            filteredAndSortedGames.map((game) => {
-              const avgRating = game.reviews.length > 0
-                ? game.reviews.reduce((sum, r) => sum + r.rating, 0) / game.reviews.length
-                : 0;
-              return (
-                <div key={game.id} className="group">
-                  <GameCard game={game} />
-                  <div className="mt-2 space-y-1">
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-1">
-                        <Star className="h-3 w-3 text-yellow-400 fill-yellow-400" />
-                        <span className="font-bold">{avgRating.toFixed(1)}</span>
-                        <span className="text-gray-400">({game.reviews.length})</span>
-                      </div>
-                      <Badge className="bg-blood-500">${game.price}</Badge>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {game.tags.slice(0, 2).map(tag => (
-                        <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
-                      ))}
-                    </div>
-                    <p className="text-xs text-gray-400 line-clamp-2">{game.description}</p>
-                  </div>
-                </div>
-              );
-            })
+            filteredAndSortedGames.map((game) => (
+              <GameCard key={game.id} game={game} />
+            ))
           ) : (
             <div className="col-span-full text-center py-20 text-gray-400">
               <p className="text-lg mb-2">No games found</p>
