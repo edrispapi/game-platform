@@ -1,4 +1,5 @@
 'use client';
+import React, { useState, useMemo } from "react";
 import { GameCard } from "@/components/GameCard";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { Link } from "react-router-dom";
@@ -12,7 +13,6 @@ import { Game, GameTag } from "@shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "framer-motion";
 import { ArrowRight, Search, Filter, SlidersHorizontal, Star, Calendar, Users } from "lucide-react";
-import { useState, useMemo } from "react";
 const Section = ({ title, children }: { title: string, children: React.ReactNode }) => (
   <motion.section
     initial={{ opacity: 0, y: 20 }}

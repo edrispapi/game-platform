@@ -1,16 +1,17 @@
 'use client';
 import { useState, useEffect, useRef } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowLeft, Send, MoreVertical, Phone, Video, Info } from "lucide-react";
+import { ArrowLeft, Send, MoreVertical, Phone, Video, Info, UserMinus } from "lucide-react";
+import { WebRTCCall } from "@/components/WebRTCCall";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
-import { Friend, ChatMessage } from "@shared/types";
+import { Friend, ChatMessage, UserProfile } from "@shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
-import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import {
   DropdownMenu,
@@ -18,17 +19,35 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export function ChatPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [messageText, setMessageText] = useState('');
+  const [callType, setCallType] = useState<'audio' | 'video' | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+  const [removeFriendDialogOpen, setRemoveFriendDialogOpen] = useState(false);
+  const [blockUserDialogOpen, setBlockUserDialogOpen] = useState(false);
 
   const { data: friendsResponse } = useQuery({
     queryKey: ['friends'],
     queryFn: () => api<{ items: Friend[] }>('/api/friends'),
+  });
+
+  const { data: currentUser } = useQuery<UserProfile>({
+    queryKey: ['profile'],
+    queryFn: () => api('/api/profile'),
   });
 
   const friend = friendsResponse?.items.find(f => f.id === id);
@@ -42,9 +61,12 @@ export function ChatPage() {
 
   const sendMessageMutation = useMutation({
     mutationFn: async (text: string) => {
+      if (!currentUser?.id) {
+        throw new Error('User not authenticated');
+      }
       return api<ChatMessage>(`/api/chats/${id}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ userId: 'user-1', text }),
+        body: JSON.stringify({ userId: currentUser.id, text }),
       });
     },
     onSuccess: () => {
@@ -82,7 +104,7 @@ export function ChatPage() {
     );
   }
 
-  const currentUserId = 'user-1';
+  const currentUserId = currentUser?.id || '';
 
   return (
     <div className="flex flex-col h-[calc(100vh-104px)] bg-void-900 rounded-lg border border-void-700 animate-fade-in overflow-hidden">
@@ -123,10 +145,20 @@ export function ChatPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Button variant="ghost" size="icon" className="hover:bg-void-700">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="hover:bg-void-700"
+            onClick={() => setCallType('audio')}
+          >
             <Phone className="h-5 w-5" />
           </Button>
-          <Button variant="ghost" size="icon" className="hover:bg-void-700">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="hover:bg-void-700"
+            onClick={() => setCallType('video')}
+          >
             <Video className="h-5 w-5" />
           </Button>
           <DropdownMenu>
@@ -136,11 +168,23 @@ export function ChatPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="bg-void-800 border-void-700">
-              <DropdownMenuItem className="hover:bg-void-700">
-                <Info className="mr-2 h-4 w-4" />
-                View Profile
+              <DropdownMenuItem className="hover:bg-void-700" asChild>
+                <Link to={`/user/${friend.username}`}>
+                  <Info className="mr-2 h-4 w-4" />
+                  View Profile
+                </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem className="hover:bg-void-700 text-red-400">
+              <DropdownMenuItem 
+                className="hover:bg-void-700 text-orange-400"
+                onClick={() => setRemoveFriendDialogOpen(true)}
+              >
+                <UserMinus className="mr-2 h-4 w-4" />
+                Remove Friend
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                className="hover:bg-void-700 text-red-400"
+                onClick={() => setBlockUserDialogOpen(true)}
+              >
                 Block User
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -236,6 +280,91 @@ export function ChatPage() {
           </Button>
         </div>
       </footer>
+      
+      {/* WebRTC Call Component */}
+      {callType && friend && (
+        <WebRTCCall
+          friendId={friend.id}
+          friendUsername={friend.username}
+          type={callType}
+          onEnd={() => setCallType(null)}
+        />
+      )}
+
+      {/* Remove Friend Dialog */}
+      <AlertDialog open={removeFriendDialogOpen} onOpenChange={setRemoveFriendDialogOpen}>
+        <AlertDialogContent className="bg-void-800 border-void-700 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Friend</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-400">
+              Are you sure you want to remove <span className="font-semibold text-white">{friend?.username}</span> from your friends? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-void-700 border-void-600 text-gray-300 hover:bg-void-600">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={async () => {
+                if (friend) {
+                  try {
+                    await api('/api/friends/remove', {
+                      method: 'POST',
+                      body: JSON.stringify({ userId: friend.id }),
+                    });
+                    toast.success(`${friend.username} has been removed from your friends`);
+                    queryClient.invalidateQueries({ queryKey: ['friends'] });
+                    setRemoveFriendDialogOpen(false);
+                    navigate('/friends');
+                  } catch (error: any) {
+                    toast.error(`Failed to remove friend: ${error.message}`);
+                  }
+                }
+              }}
+            >
+              Remove Friend
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Block User Dialog */}
+      <AlertDialog open={blockUserDialogOpen} onOpenChange={setBlockUserDialogOpen}>
+        <AlertDialogContent className="bg-void-800 border-void-700 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Block User</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-400">
+              Are you sure you want to block <span className="font-semibold text-white">{friend?.username}</span>? You will not be able to see their messages or profile, and they will not be able to contact you.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-void-700 border-void-600 text-gray-300 hover:bg-void-600">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={async () => {
+                if (friend) {
+                  try {
+                    await api('/api/users/block', {
+                      method: 'POST',
+                      body: JSON.stringify({ userId: friend.id }),
+                    });
+                    toast.success(`${friend.username} has been blocked`);
+                    setBlockUserDialogOpen(false);
+                    navigate('/friends');
+                  } catch (error: any) {
+                    toast.error(`Failed to block user: ${error.message}`);
+                  }
+                }
+              }}
+            >
+              Block User
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

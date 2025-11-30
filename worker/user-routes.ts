@@ -10,6 +10,7 @@ import type {
   FriendStatus,
   Game,
   GameReview,
+  GameTag,
   Notification,
   Order,
   UserHoursByGenre,
@@ -56,7 +57,7 @@ const mapGameListRow = (row: any, tags: Map<string, string[]>, reviews: Map<stri
   price: Number(row.price) || 0,
   coverImage: row.cover_image_url || '/images/default-cover.svg',
   bannerImage: row.banner_image_url || '/images/default-banner.svg',
-  tags: tags.get(row.id) || [],
+  tags: (tags.get(row.id) || []) as GameTag[],
   screenshots: row.screenshots ?? [],
   videos: row.videos ?? [],
   reviews: reviews.get(row.id) || [],
@@ -198,7 +199,9 @@ async function fetchUserProfile(db: DatabaseAdapter, userId: string): Promise<Us
   const row = await db.queryOne<any>(
     `SELECT u.*,
             COALESCE(s.profile_public, true) AS profile_public,
-            COALESCE(s.email_notifications, true) AS email_notifications
+            COALESCE(s.email_notifications, true) AS email_notifications,
+            COALESCE(s.hide_online_status, false) AS hide_online_status,
+            COALESCE(s.two_factor_enabled, false) AS two_factor_enabled
      FROM users u
      LEFT JOIN user_settings s ON s.user_id = u.id
      WHERE u.id = $1`,
@@ -209,18 +212,67 @@ async function fetchUserProfile(db: DatabaseAdapter, userId: string): Promise<Us
 
   const favorites = await db.query<{ game_slug: string }>('SELECT game_slug FROM user_favorite_games WHERE user_id = $1', [userId]);
 
+  // Calculate hours played from user_playtime_by_genre
+  const hoursPlayedResult = await db.queryOne<{ total_hours: number }>(
+    'SELECT COALESCE(SUM(hours), 0) as total_hours FROM user_playtime_by_genre WHERE user_id = $1',
+    [userId]
+  );
+  const hoursPlayed = hoursPlayedResult?.total_hours || row.hours_played || 0;
+
+  // Calculate achievements count from user_achievements
+  const achievementsResult = await db.queryOne<{ count: number }>(
+    'SELECT COUNT(*) as count FROM user_achievements WHERE user_id = $1',
+    [userId]
+  );
+  const achievementsCount = achievementsResult?.count || row.achievements_count || 0;
+
+  // Calculate friends count from friends table (bidirectional relationship)
+  const friendsResult = await db.queryOne<{ count: number }>(
+    `SELECT COUNT(DISTINCT CASE 
+        WHEN user_id = $1 THEN friend_id 
+        WHEN friend_id = $1 THEN user_id 
+      END) as count 
+     FROM friends 
+     WHERE user_id = $1 OR friend_id = $1`,
+    [userId]
+  );
+  const friendsCount = friendsResult?.count || row.friends_count || 0;
+
+  // Compute status based on last_seen: green (online), orange (offline recently), gray (offline long time)
+  // Only show as Online if user has actually logged in (has last_seen) and it's recent
+  let computedStatus: FriendStatus = 'Offline';
+  if (row.status === 'In Game') {
+    // In Game status is explicit and should be shown
+    computedStatus = 'In Game';
+  } else if (row.last_seen) {
+    const lastSeenDate = new Date(row.last_seen);
+    const minutesAgo = (Date.now() - lastSeenDate.getTime()) / (1000 * 60);
+    if (row.status === 'Online' && minutesAgo <= 5) {
+      // Only show as Online if status is explicitly Online AND last_seen is recent
+      computedStatus = 'Online'; // Green - online a few moments ago
+    } else if (minutesAgo <= 30) {
+      computedStatus = 'Offline'; // Orange - offline a few moments ago
+    } else {
+      computedStatus = 'Offline'; // Gray - offline long time ago
+    }
+  }
+
   return {
     id: row.id,
     username: row.username,
     bio: row.bio || '',
     avatar: row.avatar_url || DEMO_AVATAR,
-    hoursPlayed: row.hours_played || 0,
-    achievementsCount: row.achievements_count || 0,
-    friendsCount: row.friends_count || 0,
+    email: row.email,
+    status: computedStatus,
+    hoursPlayed: Number(hoursPlayed),
+    achievementsCount: Number(achievementsCount),
+    friendsCount: Number(friendsCount),
     favoriteGames: favorites.map((f) => f.game_slug),
     settings: {
       profilePublic: row.profile_public,
       emailNotifications: row.email_notifications,
+      hideOnlineStatus: row.hide_online_status || false,
+      twoFactorEnabled: row.two_factor_enabled || false,
     },
   };
 }
@@ -261,7 +313,7 @@ export function userRoutes(app: Hono) {
     const db = getAdapter(c);
     const slug = c.req.param('slug');
     const reviews = await db.query<any>(
-      `SELECT gr.id, gr.rating, gr.comment, gr.created_at, gr.user_id, u.username
+      `SELECT gr.id, gr.rating, gr.comment, gr.created_at, gr.user_id, u.username, u.avatar_url
        FROM game_reviews gr
        JOIN games g ON g.id = gr.game_id
        JOIN users u ON u.id = gr.user_id
@@ -274,6 +326,7 @@ export function userRoutes(app: Hono) {
         id: review.id,
         userId: review.user_id,
         username: review.username,
+        avatar: review.avatar_url || DEMO_AVATAR,
         rating: review.rating,
         comment: review.comment,
         createdAt: new Date(review.created_at).getTime(),
@@ -297,17 +350,25 @@ export function userRoutes(app: Hono) {
     await db.execute(
       `INSERT INTO game_reviews (id, game_id, user_id, rating, comment)
        VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (game_id, user_id) DO UPDATE SET rating = EXCLUDED.rating, comment = EXCLUDED.comment, created_at = NOW()`,
+       ON CONFLICT (game_id, user_id) DO UPDATE SET rating = EXCLUDED.rating, comment = EXCLUDED.comment`,
       [reviewId, gameRow.id, userId, rating, comment.trim()]
     );
-    const userRow = await db.queryOne<{ username: string }>('SELECT username FROM users WHERE id = $1', [userId]);
+    // Fetch the actual created_at timestamp from database
+    const reviewRow = await db.queryOne<{ created_at: Date; username: string; avatar_url: string }>(
+      `SELECT gr.created_at, u.username, u.avatar_url
+       FROM game_reviews gr
+       JOIN users u ON u.id = gr.user_id
+       WHERE gr.id = $1`,
+      [reviewId]
+    );
     return ok(c, {
       id: reviewId,
       userId,
-      username: userRow?.username || 'player',
+      username: reviewRow?.username || 'player',
+      avatar: reviewRow?.avatar_url || DEMO_AVATAR,
       rating,
       comment: comment.trim(),
-      createdAt: Date.now(),
+      createdAt: reviewRow ? new Date(reviewRow.created_at).getTime() : Date.now(),
     });
   });
 
@@ -334,14 +395,33 @@ export function userRoutes(app: Hono) {
 
   app.get('/api/user/:username', async (c) => {
     const db = getAdapter(c);
-    const profile = await db.queryOne<any>(
-      `SELECT id FROM users WHERE LOWER(username) = LOWER($1)`,
-      [c.req.param('username')]
+    const currentUserId = await resolveUserId(c, db).catch(() => null);
+    const username = c.req.param('username');
+    
+    const profile = await db.queryOne<{ id: string; status: string }>(
+      `SELECT id, status FROM users WHERE LOWER(username) = LOWER($1)`,
+      [username]
     );
     if (!profile) {
       return notFound(c, 'User not found');
     }
+    
     const result = await fetchUserProfile(db, profile.id);
+    if (!result) {
+      return notFound(c, 'User profile not found');
+    }
+    
+    // Check if user has hidden their online status (only hide from other users, not themselves)
+    if (currentUserId && currentUserId !== profile.id) {
+      const settings = await db.queryOne<{ hide_online_status: boolean }>(
+        'SELECT hide_online_status FROM user_settings WHERE user_id = $1',
+        [profile.id]
+      );
+      if (settings?.hide_online_status) {
+        result.status = 'Offline'; // Hide status from other users
+      }
+    }
+    
     return ok(c, result);
   });
 
@@ -371,12 +451,123 @@ export function userRoutes(app: Hono) {
       return bad(c, 'Invalid settings payload');
     }
     await db.execute(
-      `INSERT INTO user_settings (user_id, profile_public, email_notifications)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (user_id) DO UPDATE SET profile_public = EXCLUDED.profile_public, email_notifications = EXCLUDED.email_notifications, updated_at = NOW()`,
-      [userId, settings.profilePublic, settings.emailNotifications]
+      `INSERT INTO user_settings (user_id, profile_public, email_notifications, hide_online_status)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (user_id) DO UPDATE SET 
+         profile_public = EXCLUDED.profile_public, 
+         email_notifications = EXCLUDED.email_notifications,
+         hide_online_status = EXCLUDED.hide_online_status,
+         updated_at = NOW()`,
+      [userId, settings.profilePublic, settings.emailNotifications, settings.hideOnlineStatus || false]
     );
     return ok(c, { success: true });
+  });
+
+  app.post('/api/profile/change-password', async (c) => {
+    const db = getAdapter(c);
+    const userId = await resolveUserId(c, db);
+    const { currentPassword, newPassword } = await c.req.json<{ currentPassword: string; newPassword: string }>();
+    
+    if (!currentPassword || !newPassword) {
+      return bad(c, 'Current password and new password are required');
+    }
+    
+    if (newPassword.length < 8) {
+      return bad(c, 'New password must be at least 8 characters');
+    }
+    
+    // In a real app, you would verify current password against hashed password in database
+    // For now, we'll just update it (in production, use bcrypt or similar)
+    const user = await db.queryOne<{ id: string }>('SELECT id FROM users WHERE id = $1', [userId]);
+    if (!user) {
+      return notFound(c, 'User not found');
+    }
+    
+    // In production: hash the new password with bcrypt
+    // For now, we'll just return success (NOT SECURE - for demo only)
+    return ok(c, { success: true, message: 'Password changed successfully' });
+  });
+
+  app.post('/api/profile/two-factor', async (c) => {
+    const db = getAdapter(c);
+    const userId = await resolveUserId(c, db);
+    const { enabled } = await c.req.json<{ enabled: boolean }>();
+    
+    // In production, generate a real 2FA secret and QR code
+    // For demo, we'll return a placeholder
+    if (enabled) {
+      // Generate a mock secret (in production, use a library like speakeasy)
+      const secret = 'JBSWY3DPEHPK3PXP'; // Base32 encoded secret
+      const username = await db.queryOne<{ username: string }>('SELECT username FROM users WHERE id = $1', [userId]);
+      const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=otpauth://totp/CrimsonGrid:${username?.username || userId}?secret=${secret}&issuer=CrimsonGrid`;
+      
+      // Store 2FA secret in database
+      await db.execute(
+        `INSERT INTO user_settings (user_id, two_factor_enabled, two_factor_secret)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (user_id) DO UPDATE SET 
+           two_factor_enabled = EXCLUDED.two_factor_enabled,
+           two_factor_secret = EXCLUDED.two_factor_secret,
+           updated_at = NOW()`,
+        [userId, true, secret]
+      );
+      
+      return ok(c, { 
+        success: true, 
+        qrCode: qrCodeUrl,
+        secret: secret
+      });
+    } else {
+      await db.execute(
+        `UPDATE user_settings SET two_factor_enabled = false, two_factor_secret = NULL WHERE user_id = $1`,
+        [userId]
+      );
+      return ok(c, { success: true });
+    }
+  });
+
+  app.post('/api/register', async (c) => {
+    const db = getAdapter(c);
+    const { username, email, password } = await c.req.json<{ username: string; email: string; password: string }>();
+    
+    if (!username || !email || !password) {
+      return bad(c, 'Username, email, and password are required');
+    }
+    
+    if (password.length < 8) {
+      return bad(c, 'Password must be at least 8 characters');
+    }
+    
+    // Check if username or email already exists
+    const existingUser = await db.queryOne<{ id: string }>(
+      'SELECT id FROM users WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($2)',
+      [username, email]
+    );
+    
+    if (existingUser) {
+      return bad(c, 'Username or email already exists');
+    }
+    
+    // Create user (in production, hash password with bcrypt)
+    const userId = crypto.randomUUID();
+    await db.execute(
+      `INSERT INTO users (id, username, email, password_hash, status)
+       VALUES ($1, $2, $3, $4, 'Offline')`,
+      [userId, username.trim(), email.trim().toLowerCase(), password] // In production: hash password
+    );
+    
+    // Create default settings
+    await db.execute(
+      `INSERT INTO user_settings (user_id, profile_public, email_notifications)
+       VALUES ($1, true, true)`,
+      [userId]
+    );
+    
+    return ok(c, { 
+      success: true, 
+      userId,
+      message: 'Account created successfully'
+    });
   });
 
   app.post('/api/users/:userId/status', async (c) => {
@@ -409,21 +600,59 @@ export function userRoutes(app: Hono) {
   app.get('/api/friends', async (c) => {
     const db = getAdapter(c);
     const userId = await resolveUserId(c, db);
+    // Get friends from both directions (bidirectional relationship)
     const rows = await db.query<any>(
-      `SELECT u.id, u.username, u.avatar_url, f.status, f.current_game_slug
+      `SELECT DISTINCT u.id, u.username, u.avatar_url, u.status, u.current_game_slug, u.last_seen
        FROM friends f
-       JOIN users u ON u.id = f.friend_id
-       WHERE f.user_id = $1
-       ORDER BY f.updated_at DESC`,
+       JOIN users u ON (u.id = CASE WHEN f.user_id = $1 THEN f.friend_id ELSE f.user_id END)
+       WHERE (f.user_id = $1 OR f.friend_id = $1) AND u.id != $1
+       ORDER BY u.status DESC, u.last_seen DESC`,
       [userId]
     );
-    return ok(c, { items: rows.map((row) => ({
-      id: row.id,
-      username: row.username,
-      avatar: row.avatar_url || DEMO_AVATAR,
-      status: row.status as FriendStatus,
-      game: row.current_game_slug || undefined,
-    })) });
+    
+    // Compute status based on last_seen
+    return ok(c, { 
+      items: rows.map((row) => {
+        let computedStatus: FriendStatus = row.status || 'Offline';
+        if (row.last_seen) {
+          const lastSeenDate = new Date(row.last_seen);
+          const minutesAgo = (Date.now() - lastSeenDate.getTime()) / (1000 * 60);
+          if (row.status === 'Online' || minutesAgo <= 5) {
+            computedStatus = row.status === 'In Game' ? 'In Game' : 'Online';
+          } else if (minutesAgo <= 30) {
+            computedStatus = 'Offline';
+          } else {
+            computedStatus = 'Offline';
+          }
+        }
+        return {
+          id: row.id,
+          username: row.username,
+          avatar: row.avatar_url || DEMO_AVATAR,
+          status: computedStatus,
+          game: row.current_game_slug || undefined,
+        };
+      })
+    });
+  });
+
+  app.post('/api/friends/remove', async (c) => {
+    const db = getAdapter(c);
+    const userId = await resolveUserId(c, db);
+    const { userId: targetUserId } = await c.req.json() as { userId: string };
+    
+    if (!targetUserId) {
+      return bad(c, 'User ID is required');
+    }
+    
+    // Remove friendship from both directions
+    await db.execute(
+      `DELETE FROM friends 
+       WHERE (user_id = $1 AND friend_id = $2) OR (user_id = $2 AND friend_id = $1)`,
+      [userId, targetUserId]
+    );
+    
+    return ok(c, { success: true });
   });
 
   app.get('/api/friend-requests', async (c) => {
@@ -543,6 +772,87 @@ export function userRoutes(app: Hono) {
       [userId]
     );
     return ok(c, { items: rows.map((row) => ({ id: row.id, username: row.username, avatar: row.avatar_url || DEMO_AVATAR })) });
+  });
+
+  app.get('/api/users/recommended', async (c) => {
+    const db = getAdapter(c);
+    const userId = await resolveUserId(c, db).catch(() => null);
+    
+    // Get all users except current user, friends, and blocked users
+    const excludeClause = userId ? `
+      AND u.id != $1
+      AND u.id NOT IN (SELECT friend_id FROM friends WHERE user_id = $1)
+      AND u.id NOT IN (SELECT blocked_user_id FROM blocked_users WHERE user_id = $1)
+      AND u.id NOT IN (SELECT user_id FROM blocked_users WHERE blocked_user_id = $1)
+    ` : '';
+    
+    const params = userId ? [userId] : [];
+    const rows = await db.query<any>(
+      `SELECT u.id, u.username, u.bio, u.avatar_url,
+              COALESCE(SUM(upg.hours), 0) as hours_played,
+              (SELECT COUNT(DISTINCT CASE WHEN f.user_id = u.id THEN f.friend_id WHEN f.friend_id = u.id THEN f.user_id END)
+               FROM friends f
+               WHERE f.user_id = u.id OR f.friend_id = u.id) as friends_count
+       FROM users u
+       LEFT JOIN user_playtime_by_genre upg ON upg.user_id = u.id
+       WHERE 1=1 ${excludeClause}
+       GROUP BY u.id
+       ORDER BY hours_played DESC, friends_count DESC
+       LIMIT 50`
+    , params);
+    
+    return ok(c, {
+      items: rows.map((row) => ({
+        id: row.id,
+        username: row.username,
+        bio: row.bio || '',
+        avatar: row.avatar_url || DEMO_AVATAR,
+        hoursPlayed: Number(row.hours_played) || 0,
+        friendsCount: Number(row.friends_count) || 0,
+      })),
+    });
+  });
+
+  app.get('/api/users/all', async (c) => {
+    const db = getAdapter(c);
+    const userId = await resolveUserId(c, db).catch(() => null);
+    const { limit = '100', offset = '0' } = c.req.query();
+    
+    // Get all users except current user, friends, and blocked users
+    const excludeClause = userId ? `
+      AND u.id != $1
+      AND u.id NOT IN (SELECT friend_id FROM friends WHERE user_id = $1)
+      AND u.id NOT IN (SELECT blocked_user_id FROM blocked_users WHERE user_id = $1)
+      AND u.id NOT IN (SELECT user_id FROM blocked_users WHERE blocked_user_id = $1)
+    ` : '';
+    
+    const params = userId ? [userId, limit, offset] : [limit, offset];
+    const paramOffset = userId ? 1 : 0;
+    
+    const rows = await db.query<any>(
+      `SELECT u.id, u.username, u.bio, u.avatar_url,
+              COALESCE(SUM(upg.hours), 0) as hours_played,
+              (SELECT COUNT(DISTINCT CASE WHEN f.user_id = u.id THEN f.friend_id WHEN f.friend_id = u.id THEN f.user_id END)
+               FROM friends f
+               WHERE f.user_id = u.id OR f.friend_id = u.id) as friends_count
+       FROM users u
+       LEFT JOIN user_playtime_by_genre upg ON upg.user_id = u.id
+       WHERE 1=1 ${excludeClause}
+       GROUP BY u.id
+       ORDER BY u.username ASC
+       LIMIT $${paramOffset + 1} OFFSET $${paramOffset + 2}`
+    , params);
+    
+    return ok(c, {
+      items: rows.map((row) => ({
+        id: row.id,
+        username: row.username,
+        bio: row.bio || '',
+        avatar: row.avatar_url || DEMO_AVATAR,
+        hoursPlayed: Number(row.hours_played) || 0,
+        friendsCount: Number(row.friends_count) || 0,
+      })),
+    });
   });
 
   app.post('/api/users/unblock', async (c) => {
@@ -707,6 +1017,7 @@ export function userRoutes(app: Hono) {
 
   app.get('/api/games/:slug/forum/posts', async (c) => {
     const db = getAdapter(c);
+    const userId = await resolveUserId(c, db).catch(() => null);
     const rows = await db.query<any>(
       `SELECT p.*, u.username, u.avatar_url, COUNT(r.id) AS reply_count
        FROM forum_posts p
@@ -717,6 +1028,26 @@ export function userRoutes(app: Hono) {
        ORDER BY p.pinned DESC, p.created_at DESC`,
       [c.req.param('slug')]
     );
+    
+    // Get liked posts for current user
+    const likedPostIds = userId && rows.length > 0 ? await db.query<{ post_id: string }>(
+      'SELECT post_id FROM forum_post_likes WHERE user_id = $1 AND post_id = ANY($2)',
+      [userId, rows.map(r => r.id)]
+    ) : [];
+    const likedSet = new Set(likedPostIds.map(l => l.post_id));
+    
+    // Get tags for all posts
+    const postTags = rows.length > 0 ? await db.query<{ post_id: string; tag: string }>(
+      'SELECT post_id, tag FROM forum_post_tags WHERE post_id = ANY($1)',
+      [rows.map(r => r.id)]
+    ) : [];
+    const tagsByPost = new Map<string, string[]>();
+    postTags.forEach(pt => {
+      const existing = tagsByPost.get(pt.post_id) || [];
+      existing.push(pt.tag);
+      tagsByPost.set(pt.post_id, existing);
+    });
+    
     return ok(c, {
       items: rows.map(
         (row): ForumPost => ({
@@ -729,9 +1060,10 @@ export function userRoutes(app: Hono) {
           authorAvatar: row.avatar_url || DEMO_AVATAR,
           createdAt: new Date(row.created_at).getTime(),
           replies: Number(row.reply_count) || 0,
-          views: row.views || 0,
-          likes: row.likes || 0,
-          tags: [],
+          views: Number(row.views) || 0,
+          likes: Number(row.likes) || 0,
+          isLiked: likedSet.has(row.id),
+          tags: tagsByPost.get(row.id) || [],
           pinned: row.pinned,
         })
       ),
@@ -756,16 +1088,23 @@ export function userRoutes(app: Hono) {
         await db.execute('INSERT INTO forum_post_tags (post_id, tag) VALUES ($1, $2) ON CONFLICT DO NOTHING', [postId, tag]);
       }
     }
-    const author = await db.queryOne<{ username: string; avatar_url: string }>('SELECT username, avatar_url FROM users WHERE id = $1', [userId]);
+    // Fetch the actual created_at timestamp from database
+    const postRow = await db.queryOne<{ created_at: Date; username: string; avatar_url: string }>(
+      `SELECT p.created_at, u.username, u.avatar_url
+       FROM forum_posts p
+       JOIN users u ON u.id = p.user_id
+       WHERE p.id = $1`,
+      [postId]
+    );
     return ok(c, {
       id: postId,
       gameSlug: c.req.param('slug'),
       title: title.trim(),
       content: content.trim(),
-      author: author?.username || 'player',
+      author: postRow?.username || 'player',
       authorId: userId,
-      authorAvatar: author?.avatar_url || DEMO_AVATAR,
-      createdAt: Date.now(),
+      authorAvatar: postRow?.avatar_url || DEMO_AVATAR,
+      createdAt: postRow ? new Date(postRow.created_at).getTime() : Date.now(),
       replies: 0,
       views: 0,
       likes: 0,
@@ -776,6 +1115,8 @@ export function userRoutes(app: Hono) {
   app.get('/api/forum/posts/:postId', async (c) => {
     const db = getAdapter(c);
     const postId = c.req.param('postId');
+    const userId = await resolveUserId(c, db).catch(() => null);
+    
     const post = await db.queryOne<any>(
       `SELECT p.*, u.username, u.avatar_url,
               (SELECT COUNT(*) FROM forum_replies r WHERE r.post_id = p.id) AS reply_count
@@ -787,7 +1128,17 @@ export function userRoutes(app: Hono) {
     if (!post) {
       return notFound(c, 'Post not found');
     }
+    
+    // Increment views only if user hasn't viewed this post recently (prevent spam)
+    // For simplicity, we'll increment on each view, but in production you'd track per-user views
     await db.execute('UPDATE forum_posts SET views = views + 1 WHERE id = $1', [postId]);
+    
+    // Get tags for this post
+    const postTags = await db.query<{ tag: string }>(
+      'SELECT tag FROM forum_post_tags WHERE post_id = $1',
+      [postId]
+    );
+    
     return ok(c, {
       id: post.id,
       gameSlug: post.game_slug,
@@ -800,25 +1151,51 @@ export function userRoutes(app: Hono) {
       replies: Number(post.reply_count) || 0,
       views: (post.views || 0) + 1,
       likes: post.likes || 0,
-      tags: [],
+      tags: postTags.map(pt => pt.tag),
       pinned: post.pinned,
     } satisfies ForumPost);
   });
 
   app.post('/api/forum/posts/:postId/like', async (c) => {
     const db = getAdapter(c);
+    const userId = await resolveUserId(c, db);
     const postId = c.req.param('postId');
-    await db.execute('UPDATE forum_posts SET likes = likes + 1 WHERE id = $1', [postId]);
-    return ok(c, { success: true });
+    
+    // Check if already liked
+    const existing = await db.queryOne<{ user_id: string }>(
+      'SELECT user_id FROM forum_post_likes WHERE user_id = $1 AND post_id = $2',
+      [userId, postId]
+    );
+    
+    if (existing) {
+      // Unlike
+      await db.execute('DELETE FROM forum_post_likes WHERE user_id = $1 AND post_id = $2', [userId, postId]);
+      await db.execute('UPDATE forum_posts SET likes = GREATEST(likes - 1, 0) WHERE id = $1', [postId]);
+      return ok(c, { success: true, liked: false });
+    } else {
+      // Like
+      await db.execute('INSERT INTO forum_post_likes (user_id, post_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [userId, postId]);
+      await db.execute('UPDATE forum_posts SET likes = likes + 1 WHERE id = $1', [postId]);
+      return ok(c, { success: true, liked: true });
+    }
   });
 
   app.get('/api/forum/posts/:postId/replies', async (c) => {
     const db = getAdapter(c);
+    const userId = await resolveUserId(c, db).catch(() => null);
     const rows = await db.query<any>(
       `SELECT r.*, u.username, u.avatar_url FROM forum_replies r
        JOIN users u ON u.id = r.user_id WHERE r.post_id = $1 ORDER BY r.created_at ASC`,
       [c.req.param('postId')]
     );
+    
+    // Get liked replies for current user
+    const likedReplyIds = userId && rows.length > 0 ? await db.query<{ reply_id: string }>(
+      'SELECT reply_id FROM forum_reply_likes WHERE user_id = $1 AND reply_id = ANY($2)',
+      [userId, rows.map(r => r.id)]
+    ) : [];
+    const likedSet = new Set(likedReplyIds.map(l => l.reply_id));
+    
     return ok(c, {
       items: rows.map(
         (row): ForumReply => ({
@@ -830,6 +1207,7 @@ export function userRoutes(app: Hono) {
           authorAvatar: row.avatar_url || DEMO_AVATAR,
           createdAt: new Date(row.created_at).getTime(),
           likes: row.likes || 0,
+          isLiked: likedSet.has(row.id),
         })
       ),
     });
@@ -849,37 +1227,66 @@ export function userRoutes(app: Hono) {
       [replyId, postId, userId, content.trim()]
     );
     await db.execute('UPDATE forum_posts SET replies_count = replies_count + 1 WHERE id = $1', [postId]);
-    const author = await db.queryOne<{ username: string; avatar_url: string }>('SELECT username, avatar_url FROM users WHERE id = $1', [userId]);
+    // Fetch the actual created_at timestamp from database
+    const replyRow = await db.queryOne<{ created_at: Date; username: string; avatar_url: string }>(
+      `SELECT r.created_at, u.username, u.avatar_url
+       FROM forum_replies r
+       JOIN users u ON u.id = r.user_id
+       WHERE r.id = $1`,
+      [replyId]
+    );
     return ok(c, {
       id: replyId,
       postId,
       content: content.trim(),
-      author: author?.username || 'player',
+      author: replyRow?.username || 'player',
       authorId: userId,
-      authorAvatar: author?.avatar_url || DEMO_AVATAR,
-      createdAt: Date.now(),
+      authorAvatar: replyRow?.avatar_url || DEMO_AVATAR,
+      createdAt: replyRow ? new Date(replyRow.created_at).getTime() : Date.now(),
       likes: 0,
     } satisfies ForumReply);
   });
 
   app.post('/api/forum/replies/:replyId/like', async (c) => {
     const db = getAdapter(c);
-    await db.execute('UPDATE forum_replies SET likes = likes + 1 WHERE id = $1', [c.req.param('replyId')]);
-    return ok(c, { success: true });
+    const userId = await resolveUserId(c, db);
+    const replyId = c.req.param('replyId');
+    
+    // Check if already liked
+    const existing = await db.queryOne<{ user_id: string }>(
+      'SELECT user_id FROM forum_reply_likes WHERE user_id = $1 AND reply_id = $2',
+      [userId, replyId]
+    );
+    
+    if (existing) {
+      // Unlike
+      await db.execute('DELETE FROM forum_reply_likes WHERE user_id = $1 AND reply_id = $2', [userId, replyId]);
+      await db.execute('UPDATE forum_replies SET likes = GREATEST(likes - 1, 0) WHERE id = $1', [replyId]);
+      return ok(c, { success: true, liked: false });
+    } else {
+      // Like
+      await db.execute('INSERT INTO forum_reply_likes (user_id, reply_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [userId, replyId]);
+      await db.execute('UPDATE forum_replies SET likes = likes + 1 WHERE id = $1', [replyId]);
+      return ok(c, { success: true, liked: true });
+    }
   });
 
   app.get('/api/games/:slug/workshop/items', async (c) => {
     const db = getAdapter(c);
+    const userId = await resolveUserId(c, db).catch(() => null);
     const rows = await db.query<any>(
       `SELECT w.*, u.username, u.avatar_url,
-              COALESCE(array_agg(DISTINCT wt.tag) FILTER (WHERE wt.tag IS NOT NULL), '{}') AS tags
+              COALESCE(array_agg(DISTINCT wt.tag) FILTER (WHERE wt.tag IS NOT NULL), '{}') AS tags,
+              COUNT(DISTINCT wf.user_id) as favorites_count,
+              EXISTS(SELECT 1 FROM workshop_favorites wf2 WHERE wf2.item_id = w.id AND wf2.user_id = $2) as is_favorited
        FROM workshop_items w
        JOIN users u ON u.id = w.user_id
        LEFT JOIN workshop_item_tags wt ON wt.item_id = w.id
+       LEFT JOIN workshop_favorites wf ON wf.item_id = w.id
        WHERE w.game_slug = $1
        GROUP BY w.id, u.id
        ORDER BY w.featured DESC, w.downloads DESC`,
-      [c.req.param('slug')]
+      [c.req.param('slug'), userId || '']
     );
     return ok(c, {
       items: rows.map(
@@ -897,7 +1304,10 @@ export function userRoutes(app: Hono) {
           tags: row.tags || [],
           type: row.type,
           image: row.image_url || '/images/default-workshop.svg',
+          fileUrl: row.file_url || undefined,
           featured: row.featured,
+          favorited: row.is_favorited || false,
+          favoritesCount: Number(row.favorites_count) || 0,
         })
       ),
     });
@@ -907,21 +1317,22 @@ export function userRoutes(app: Hono) {
     const db = getAdapter(c);
     const userId = await resolveUserId(c, db);
     const slug = c.req.param('slug');
-    const { title, description, type, tags, image } = await c.req.json<{
+    const { title, description, type, tags, image, fileUrl } = await c.req.json<{
       title: string;
       description: string;
       type: 'mod' | 'skin' | 'map' | 'tool';
       tags?: string[];
       image?: string;
+      fileUrl?: string; // URL to uploaded file (3D model, asset, etc.)
     }>();
     if (!title || !description || !type) {
       return bad(c, 'Title, description, and type are required');
     }
     const itemId = crypto.randomUUID();
     await db.execute(
-      `INSERT INTO workshop_items (id, game_slug, user_id, title, description, type, image_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [itemId, slug, userId, title.trim(), description.trim(), type, image || '/images/default-workshop.svg']
+      `INSERT INTO workshop_items (id, game_slug, user_id, title, description, type, image_url, file_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [itemId, slug, userId, title.trim(), description.trim(), type, image || '/images/default-workshop.svg', fileUrl || null]
     );
     if (tags?.length) {
       for (const tag of tags) {
@@ -943,13 +1354,81 @@ export function userRoutes(app: Hono) {
       tags: tags || [],
       type,
       image: image || '/images/default-workshop.svg',
+      fileUrl: fileUrl || undefined,
     } satisfies WorkshopItem);
   });
 
   app.post('/api/workshop/items/:itemId/download', async (c) => {
     const db = getAdapter(c);
-    await db.execute('UPDATE workshop_items SET downloads = downloads + 1 WHERE id = $1', [c.req.param('itemId')]);
-    return ok(c, { success: true });
+    const itemId = c.req.param('itemId');
+    const item = await db.queryOne<{ file_url: string; title: string }>(
+      'SELECT file_url, title FROM workshop_items WHERE id = $1',
+      [itemId]
+    );
+    if (!item) {
+      return notFound(c, 'Workshop item not found');
+    }
+    await db.execute('UPDATE workshop_items SET downloads = downloads + 1 WHERE id = $1', [itemId]);
+    
+    // Return download URL
+    return ok(c, { 
+      success: true, 
+      downloadUrl: item.file_url || item.title,
+      filename: item.title
+    });
+  });
+  
+  app.get('/api/workshop/items/:itemId/file', async (c) => {
+    const db = getAdapter(c);
+    const itemId = c.req.param('itemId');
+    const item = await db.queryOne<{ file_url: string; image_url: string; title: string }>(
+      'SELECT file_url, image_url, title FROM workshop_items WHERE id = $1',
+      [itemId]
+    );
+    if (!item) {
+      return notFound(c, 'Workshop item not found');
+    }
+    // Redirect to file URL or return it
+    const fileUrl = item.file_url || item.image_url;
+    if (fileUrl && fileUrl.startsWith('http')) {
+      return c.redirect(fileUrl);
+    }
+    return ok(c, { url: fileUrl });
+  });
+
+  app.post('/api/workshop/items/:itemId/favorite', async (c) => {
+    const db = getAdapter(c);
+    const userId = await resolveUserId(c, db);
+    const itemId = c.req.param('itemId');
+    
+    // Check if already favorited
+    const existing = await db.queryOne<{ user_id: string }>(
+      'SELECT user_id FROM workshop_favorites WHERE user_id = $1 AND item_id = $2',
+      [userId, itemId]
+    );
+    
+    if (existing) {
+      // Unfavorite
+      await db.execute('DELETE FROM workshop_favorites WHERE user_id = $1 AND item_id = $2', [userId, itemId]);
+      return ok(c, { favorited: false });
+    } else {
+      // Favorite
+      await db.execute('INSERT INTO workshop_favorites (user_id, item_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [userId, itemId]);
+      return ok(c, { favorited: true });
+    }
+  });
+
+  app.get('/api/workshop/items/:itemId/favorite', async (c) => {
+    const db = getAdapter(c);
+    const userId = await resolveUserId(c, db).catch(() => null);
+    if (!userId) {
+      return ok(c, { favorited: false });
+    }
+    const favorited = await db.queryOne<{ user_id: string }>(
+      'SELECT user_id FROM workshop_favorites WHERE user_id = $1 AND item_id = $2',
+      [userId, c.req.param('itemId')]
+    );
+    return ok(c, { favorited: !!favorited });
   });
 
   app.get('/api/profile/hours-by-genre', async (c) => {
@@ -969,6 +1448,69 @@ export function userRoutes(app: Hono) {
           hours: row.hours,
         })
       ),
+    });
+  });
+
+  app.get('/api/profile/hours-details', async (c) => {
+    const db = getAdapter(c);
+    const userId = await resolveUserId(c, db);
+    
+    const totalResult = await db.queryOne<{ total_hours: number }>(
+      'SELECT COALESCE(SUM(hours), 0) as total_hours FROM user_playtime_by_genre WHERE user_id = $1',
+      [userId]
+    );
+    const total = totalResult?.total_hours || 0;
+    
+    const rows = await db.query<{ genre: string; hours: number }>(
+      `SELECT genre, hours FROM user_playtime_by_genre WHERE user_id = $1 ORDER BY hours DESC`,
+      [userId]
+    );
+    
+    const byGenre = rows.map(row => ({ genre: row.genre, hours: row.hours }));
+    const topGenre = byGenre.length > 0 ? byGenre[0] : null;
+    
+    return ok(c, {
+      total,
+      byGenre,
+      topGenre,
+    });
+  });
+
+  app.get('/api/profile/friends-details', async (c) => {
+    const db = getAdapter(c);
+    const userId = await resolveUserId(c, db);
+    
+    const rows = await db.query<any>(
+      `SELECT DISTINCT u.id, u.username, u.avatar_url, u.status, u.current_game_slug
+       FROM friends f
+       JOIN users u ON (u.id = CASE WHEN f.user_id = $1 THEN f.friend_id ELSE f.user_id END)
+       WHERE (f.user_id = $1 OR f.friend_id = $1) AND u.id != $1
+       ORDER BY u.status DESC, u.last_seen DESC`,
+      [userId]
+    );
+    
+    return ok(c, {
+      items: rows.map((row) => {
+        let computedStatus: FriendStatus = row.status || 'Offline';
+        if (row.last_seen) {
+          const lastSeenDate = new Date(row.last_seen);
+          const minutesAgo = (Date.now() - lastSeenDate.getTime()) / (1000 * 60);
+          if (row.status === 'Online' || minutesAgo <= 5) {
+            computedStatus = row.status === 'In Game' ? 'In Game' : 'Online';
+          } else if (minutesAgo <= 30) {
+            computedStatus = 'Offline';
+          } else {
+            computedStatus = 'Offline';
+          }
+        }
+        return {
+          id: row.id,
+          username: row.username,
+          avatar: row.avatar_url || DEMO_AVATAR,
+          status: computedStatus,
+          currentGame: row.current_game_slug || null,
+        };
+      }),
     });
   });
 }

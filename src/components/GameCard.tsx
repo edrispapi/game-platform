@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Star } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { WebGLImage } from "@/components/WebGLImage";
 interface GameCardProps {
   game: Game;
   variant?: 'store' | 'library';
@@ -21,10 +22,11 @@ export function GameCard({ game, variant = 'store' }: GameCardProps) {
     >
       <Link to={`/game/${game.slug}`} className="block">
         <div className="aspect-[3/4] relative">
-          <img
+          <WebGLImage
             src={game.coverImage}
             alt={game.title}
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+            fallback={game.coverImage}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
         </div>

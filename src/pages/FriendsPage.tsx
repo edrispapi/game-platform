@@ -1,4 +1,5 @@
 'use client';
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,7 +12,7 @@ import { Friend, Game, FriendRequest, UserProfile } from "@shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { UserLink } from "@/components/UserLink";
 function BlockedUsersTab() {
   const queryClient = useQueryClient();
@@ -78,6 +79,7 @@ function FriendRequestsTab() {
   const { data: requestsResponse, isLoading, isError } = useQuery({
     queryKey: ['friend-requests'],
     queryFn: () => api<{ items: FriendRequest[] }>('/api/friend-requests'),
+    refetchInterval: 3000, // Real-time updates every 3 seconds
   });
   const handleResponse = (requestId: string, action: 'accept' | 'reject') => {
     return api(`/api/friend-requests/${requestId}/${action}`, { method: 'POST' });
@@ -88,6 +90,8 @@ function FriendRequestsTab() {
       toast.success(`Friend request ${variables.action}ed.`);
       queryClient.invalidateQueries({ queryKey: ['friend-requests'] });
       queryClient.invalidateQueries({ queryKey: ['friends'] }); // Invalidate friends list too
+      // Force immediate refetch for real-time update
+      queryClient.refetchQueries({ queryKey: ['friends'] });
     },
     onError: (_, variables) => {
       toast.error(`Failed to ${variables.action} friend request.`);
@@ -142,12 +146,13 @@ function FriendRequestsTab() {
 export function FriendsPage() {
   const [addFriendOpen, setAddFriendOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [recommendSort, setRecommendSort] = useState<'hours' | 'friends' | 'random'>('hours');
   const queryClient = useQueryClient();
   
   const { data: friendsResponse, isLoading, isError } = useQuery({
     queryKey: ['friends'],
     queryFn: () => api<{ items: Friend[] }>('/api/friends'),
-    refetchInterval: 5000, // Poll for status updates every 5 seconds
+    refetchInterval: 3000, // Poll for status updates every 3 seconds for real-time feel
   });
   const { data: gamesResponse } = useQuery({
     queryKey: ['games'],
@@ -160,6 +165,20 @@ export function FriendsPage() {
     queryFn: () => api<{ items: UserProfile[] }>(`/api/users/search?q=${encodeURIComponent(searchQuery)}`),
     enabled: searchQuery.length >= 2 && addFriendOpen,
   });
+
+  const [discoverTab, setDiscoverTab] = useState<'recommended' | 'all'>('recommended');
+  
+  const { data: recommendedResponse, isLoading: isLoadingRecommended } = useQuery({
+    queryKey: ['users-recommended'],
+    queryFn: () => api<{ items: any[] }>('/api/users/recommended'),
+    enabled: addFriendOpen && discoverTab === 'recommended',
+  });
+  
+  const { data: allUsersResponse, isLoading: isLoadingAllUsers } = useQuery({
+    queryKey: ['users-all'],
+    queryFn: () => api<{ items: any[] }>('/api/users/all'),
+    enabled: addFriendOpen && discoverTab === 'all',
+  });
   
   const addFriendMutation = useMutation({
     mutationFn: (username: string) => api('/api/friend-requests/add', {
@@ -171,6 +190,7 @@ export function FriendsPage() {
       setAddFriendOpen(false);
       setSearchQuery('');
       queryClient.invalidateQueries({ queryKey: ['friend-requests'] });
+      queryClient.refetchQueries({ queryKey: ['friend-requests'] });
     },
     onError: (error: Error) => {
       toast.error(`Failed to send friend request: ${error.message}`);
@@ -179,6 +199,24 @@ export function FriendsPage() {
   
   const friends = friendsResponse?.items ?? [];
   const gamesBySlug = new Map(gamesResponse?.items.map(g => [g.slug, g]));
+  const recommendedItems = recommendedResponse?.items ?? [];
+  const allUsersItems = allUsersResponse?.items ?? [];
+  
+  const displayItems = discoverTab === 'all' ? allUsersItems : recommendedItems;
+  const isLoadingItems = discoverTab === 'all' ? isLoadingAllUsers : isLoadingRecommended;
+  
+  const sortedRecommendedItems = useMemo(() => {
+    if (!displayItems.length) return [];
+    const items = [...displayItems];
+    if (recommendSort === 'hours') {
+      items.sort((a, b) => (b.hoursPlayed ?? 0) - (a.hoursPlayed ?? 0));
+    } else if (recommendSort === 'friends') {
+      items.sort((a, b) => (b.friendsCount ?? 0) - (a.friendsCount ?? 0));
+    } else {
+      items.sort(() => Math.random() - 0.5);
+    }
+    return items;
+  }, [displayItems, recommendSort]);
   const renderFriendList = () => {
     if (isLoading) {
       return Array.from({ length: 3 }).map((_, i) => (
@@ -241,13 +279,14 @@ export function FriendsPage() {
           
           <Dialog open={addFriendOpen} onOpenChange={setAddFriendOpen}>
             <DialogContent className="bg-void-800 border-void-700 text-white">
-              <DialogHeader>
-                <DialogTitle className="text-2xl font-orbitron">Add Friend</DialogTitle>
-                <DialogDescription className="text-gray-400">
-                  Search for players by username to send a friend request
-                </DialogDescription>
-              </DialogHeader>
               <div className="space-y-4">
+                <DialogHeader>
+                  <DialogTitle className="text-2xl font-orbitron">Add Friend</DialogTitle>
+                  <DialogDescription className="text-gray-400">
+                    Search for players by username to send a friend request
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
                 <div className="relative">
                   <Input
                     placeholder="Search by username..."
@@ -296,15 +335,107 @@ export function FriendsPage() {
                     )}
                   </div>
                 )}
+                {searchQuery.length < 2 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex gap-2">
+                        <Button
+                          variant={discoverTab === 'recommended' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setDiscoverTab('recommended')}
+                        >
+                          Recommended
+                        </Button>
+                        <Button
+                          variant={discoverTab === 'all' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setDiscoverTab('all')}
+                        >
+                          Discover All Users
+                        </Button>
+                      </div>
+                      <div className="flex gap-2 text-xs">
+                        <Button
+                          variant={recommendSort === 'hours' ? 'default' : 'outline'}
+                          size="xs"
+                          onClick={() => setRecommendSort('hours')}
+                        >
+                          Best players
+                        </Button>
+                        <Button
+                          variant={recommendSort === 'friends' ? 'default' : 'outline'}
+                          size="xs"
+                          onClick={() => setRecommendSort('friends')}
+                        >
+                          Most popular
+                        </Button>
+                        <Button
+                          variant={recommendSort === 'random' ? 'default' : 'outline'}
+                          size="xs"
+                          onClick={() => setRecommendSort('random')}
+                        >
+                          Random
+                        </Button>
+                      </div>
+                    </div>
+                    {isLoadingItems ? (
+                      <div className="space-y-2">
+                        {Array.from({ length: 3 }).map((_, i) => (
+                          <Skeleton key={i} className="h-16 w-full rounded-lg" />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {sortedRecommendedItems.length ? (
+                          sortedRecommendedItems.map((user) => (
+                            <div
+                              key={user.id}
+                              className="flex items-center justify-between p-3 bg-void-700 rounded-lg border border-void-600 hover:border-blood-500 transition-colors"
+                            >
+                              <div className="flex items-center gap-3">
+                                <Avatar className="h-10 w-10">
+                                  <AvatarImage src={user.avatar} />
+                                  <AvatarFallback>{user.username.substring(0, 2).toUpperCase()}</AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <p className="font-bold">{user.username}</p>
+                                  <p className="text-xs text-gray-400">
+                                    {user.hoursPlayed ? `${user.hoursPlayed} hrs played` : 'New player'}
+                                    {user.friendsCount ? ` • ${user.friendsCount} friends` : ''}
+                                  </p>
+                                </div>
+                              </div>
+                              <Button
+                                size="sm"
+                                className="bg-blood-500 hover:bg-blood-600"
+                                onClick={() => addFriendMutation.mutate(user.username)}
+                                disabled={addFriendMutation.isPending}
+                              >
+                                <UserPlus className="h-4 w-4 mr-1" />
+                                Add
+                              </Button>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-center text-gray-400 py-4">No suggestions available.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setAddFriendOpen(false);
+                      setSearchQuery('');
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </DialogFooter>
               </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => {
-                  setAddFriendOpen(false);
-                  setSearchQuery('');
-                }}>
-                  Cancel
-                </Button>
-              </DialogFooter>
+            </div>
             </DialogContent>
           </Dialog>
         </div>

@@ -25,6 +25,7 @@ export interface GameReview {
   id: string;
   userId: string;
   username: string;
+  avatar?: string;
   rating: number; // 1-5
   comment: string;
   createdAt: number;
@@ -54,13 +55,20 @@ export interface UserProfile {
   username: string;
   bio: string;
   avatar: string;
+  email?: string;
+  status?: FriendStatus;
   hoursPlayed: number;
   achievementsCount: number;
   friendsCount: number;
   favoriteGames: string[]; // array of game slugs
+  blocked?: boolean;
+  blockedByMe?: boolean;
+  blockedByThem?: boolean;
   settings: {
     profilePublic: boolean;
     emailNotifications: boolean;
+    hideOnlineStatus?: boolean;
+    twoFactorEnabled?: boolean;
   };
 }
 export type FriendStatus = 'Online' | 'Offline' | 'In Game';
@@ -120,6 +128,7 @@ export interface ForumPost {
   replies: number;
   views: number;
   likes: number;
+  isLiked?: boolean;
   tags: string[];
   pinned?: boolean;
 }
@@ -132,6 +141,7 @@ export interface ForumReply {
   authorAvatar: string;
   createdAt: number;
   likes: number;
+  isLiked?: boolean;
 }
 export interface WorkshopItem {
   id: string;
@@ -147,7 +157,10 @@ export interface WorkshopItem {
   tags: string[];
   type: 'mod' | 'skin' | 'map' | 'tool';
   image: string;
+  fileUrl?: string; // URL to the uploaded file (3D model, asset, etc.)
   featured?: boolean;
+  favorited?: boolean; // Whether current user has favorited this item
+  favoritesCount?: number; // Total number of favorites
 }
 export interface UserHoursByGenre {
   genre: GameTag;

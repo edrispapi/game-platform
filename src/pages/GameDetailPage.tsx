@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { ShoppingCart, Check, Star, MessageSquare, Construction } from "lucide-react";
+import { ShoppingCart, Check, Star, MessageSquare, Construction, Play, Image as ImageIcon, AlertCircle, Download } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { Game, GameReview } from "@shared/types";
@@ -19,6 +19,92 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { formatDistanceToNow } from "date-fns";
 import ReactPlayer from 'react-player/youtube';
 import { UserLink } from "@/components/UserLink";
+import { GAME_TRAILERS, getYoutubeThumbnail } from "@shared/trailers";
+import { WebGLImage } from "@/components/WebGLImage";
+
+// Screenshot Card Component with Error Handling
+function ScreenshotCard({ imageUrl, gameTitle, index, fallbackThumbnail }: { 
+  imageUrl: string; 
+  gameTitle: string; 
+  index: number;
+  fallbackThumbnail: string | null;
+}) {
+  const [imageError, setImageError] = useState(false);
+  const [imageLoading, setImageLoading] = useState(true);
+
+  return (
+    <Card className="bg-void-800 border-void-700 overflow-hidden group hover:border-blood-500/50 transition-all duration-300 hover:shadow-xl">
+      <CardContent className="p-0 relative aspect-video">
+        {!imageError ? (
+          <>
+            <WebGLImage
+              src={imageUrl}
+              alt={`${gameTitle} screenshot ${index + 1}`}
+              className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-110 ${
+                imageLoading ? 'opacity-0' : 'opacity-100'
+              }`}
+              fallback={fallbackThumbnail || undefined}
+              onLoad={() => setImageLoading(false)}
+              onError={() => {
+                setImageError(true);
+                setImageLoading(false);
+              }}
+            />
+            {imageLoading && (
+              <div className="absolute inset-0 bg-void-700 animate-pulse flex items-center justify-center">
+                <ImageIcon className="h-8 w-8 text-gray-600 animate-pulse" />
+              </div>
+            )}
+            {/* Hover Overlay */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center p-4 gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="bg-white/10 backdrop-blur-sm hover:bg-white/20"
+                onClick={() => window.open(imageUrl, '_blank')}
+              >
+                <ImageIcon className="h-4 w-4 mr-2" />
+                View Full Size
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="bg-white/10 backdrop-blur-sm hover:bg-white/20"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const link = document.createElement('a');
+                  link.href = imageUrl;
+                  link.download = `${gameTitle}-screenshot-${index + 1}.jpg`;
+                  link.target = '_blank';
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                }}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download
+              </Button>
+            </div>
+          </>
+        ) : (
+          // Fallback for broken images
+          <div className="w-full h-full flex flex-col items-center justify-center bg-void-700 text-gray-500 p-4">
+            <AlertCircle className="h-8 w-8 mb-2 text-gray-600" />
+            <p className="text-xs text-center">Image unavailable</p>
+            {fallbackThumbnail && (
+              <img 
+                src={fallbackThumbnail} 
+                alt="Fallback thumbnail" 
+                className="mt-2 w-full h-full object-cover opacity-50"
+              />
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function GameDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const queryClient = useQueryClient();
@@ -83,11 +169,36 @@ export function GameDetailPage() {
   if (isGameError || !game) {
     return <div className="text-center py-20 text-red-500">Game not found or failed to load.</div>;
   }
+  const fallbackTrailer = slug ? GAME_TRAILERS[slug] : undefined;
+  const trailerUrl = (game.videos && game.videos[0]) || fallbackTrailer;
+  const fallbackScreenshot = trailerUrl ? getYoutubeThumbnail(trailerUrl) : null;
+  const screenshots = game.screenshots.length
+    ? game.screenshots
+    : fallbackScreenshot
+      ? [fallbackScreenshot]
+      : [];
+  
+  // Helper to get YouTube thumbnail from URL
+  const getYoutubeThumbnailFromUrl = (url: string) => {
+    if (!url) return null;
+    const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/);
+    if (match) {
+      return `https://img.youtube.com/vi/${match[1]}/maxresdefault.jpg`;
+    }
+    return null;
+  };
+  
+  const trailerThumbnail = trailerUrl ? getYoutubeThumbnailFromUrl(trailerUrl) : null;
   return (
     <div className="animate-fade-in">
       {/* Hero Section */}
       <div className="relative h-[450px] rounded-lg overflow-hidden mb-8">
-        <img src={game.bannerImage} alt={game.title} className="w-full h-full object-cover" />
+        <WebGLImage 
+          src={game.bannerImage} 
+          alt={game.title} 
+          className="w-full h-full object-cover"
+          fallback={game.coverImage}
+        />
         <div className="absolute inset-0 bg-gradient-to-t from-void-950 via-void-950/50 to-transparent" />
         <div className="absolute bottom-0 left-0 p-8 text-white">
           <h1 className="font-orbitron text-5xl font-black mb-2">{game.title}</h1>
@@ -133,44 +244,111 @@ export function GameDetailPage() {
           <p>{game.description}</p>
         </TabsContent>
         <TabsContent value="media" className="py-6 space-y-8">
-            <div>
-                <h3 className="font-orbitron text-2xl font-bold mb-4 text-blood-400">Trailer</h3>
-                {game.videos && game.videos.length > 0 && game.videos[0] ? (
-                    <div className="aspect-video rounded-lg overflow-hidden bg-void-800">
-                        <ReactPlayer 
-                            url={game.videos[0]} 
-                            width="100%" 
-                            height="100%" 
-                            controls
-                            onError={(error) => {
-                                console.error('Video player error:', error);
-                                toast.error('Failed to load trailer video');
-                            }}
-                            fallback={
-                                <div className="w-full h-full flex items-center justify-center text-gray-400">
-                                    Loading trailer...
-                                </div>
-                            }
-                        />
-                    </div>
-                ) : (
-                    <div className="aspect-video rounded-lg bg-void-800 flex items-center justify-center text-gray-400 border border-void-700">
-                        <div className="text-center">
-                            <p className="text-lg mb-2">No trailer available</p>
-                            <p className="text-sm text-gray-500">Trailer video will be available soon</p>
-                        </div>
+            {/* Trailer Section - Modern Design */}
+            <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                    <Play className="h-6 w-6 text-blood-500" />
+                    <h3 className="font-orbitron text-2xl font-bold text-blood-400">Game Trailer</h3>
                 </div>
+                {trailerUrl ? (
+                    <Card className="bg-void-800 border-void-700 overflow-hidden shadow-xl hover:shadow-2xl transition-shadow duration-300">
+                        <CardContent className="p-0">
+                            <div className="relative aspect-video bg-gradient-to-br from-void-900 to-void-950">
+                                {/* YouTube Thumbnail Background */}
+                                {trailerThumbnail && (
+                                    <div className="absolute inset-0 opacity-20">
+                                        <img 
+                                            src={trailerThumbnail} 
+                                            alt="Trailer thumbnail" 
+                                            className="w-full h-full object-cover blur-sm"
+                                            onError={(e) => {
+                                                (e.target as HTMLImageElement).style.display = 'none';
+                                            }}
+                                        />
+                                    </div>
+                                )}
+                                
+                                {/* Gradient Overlay */}
+                                <div className="absolute inset-0 bg-gradient-to-t from-void-950 via-void-900/50 to-transparent" />
+                                
+                                {/* Video Player */}
+                                <div className="relative z-10 w-full h-full">
+                                    <ReactPlayer 
+                                        url={trailerUrl} 
+                                        width="100%" 
+                                        height="100%" 
+                                        controls
+                                        playing={false}
+                                        light={false}
+                                        playIcon={
+                                            <div className="flex items-center justify-center w-full h-full">
+                                                <div className="bg-blood-500/90 hover:bg-blood-500 rounded-full p-6 transition-all duration-300 hover:scale-110 shadow-lg cursor-pointer">
+                                                    <Play className="h-12 w-12 text-white ml-1" fill="currentColor" />
+                                                </div>
+                                            </div>
+                                        }
+                                        onError={(error) => {
+                                            console.error('Video player error:', error);
+                                            toast.error('Failed to load trailer video');
+                                        }}
+                                    />
+                                </div>
+                                
+                                {/* Decorative Corner Accents */}
+                                <div className="absolute top-0 left-0 w-20 h-20 border-t-2 border-l-2 border-blood-500/30" />
+                                <div className="absolute bottom-0 right-0 w-20 h-20 border-b-2 border-r-2 border-blood-500/30" />
+                            </div>
+                        </CardContent>
+                    </Card>
+                ) : (
+                    <Card className="bg-void-800 border-void-700 border-dashed">
+                        <CardContent className="aspect-video flex items-center justify-center">
+                            <div className="text-center space-y-3">
+                                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-void-700 mb-4">
+                                    <Play className="h-8 w-8 text-gray-500" />
+                                </div>
+                                <p className="text-lg font-semibold text-gray-400">No trailer available</p>
+                                <p className="text-sm text-gray-500">Trailer video will be available soon</p>
+                            </div>
+                        </CardContent>
+                    </Card>
                 )}
             </div>
-            <div>
-                <h3 className="font-orbitron text-2xl font-bold mb-4 text-blood-400">Screenshots</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {game.screenshots.map((img, idx) => (
-                    <a href={img} target="_blank" rel="noopener noreferrer" key={idx} className="overflow-hidden rounded-lg group">
-                        <img src={img} alt={`screenshot ${idx + 1}`} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" />
-                    </a>
-                    ))}
+
+            {/* Screenshots Section - Modern Grid with Error Handling */}
+            <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                    <ImageIcon className="h-6 w-6 text-blood-500" />
+                    <h3 className="font-orbitron text-2xl font-bold text-blood-400">Screenshots</h3>
+                    {screenshots.length > 0 && (
+                        <Badge variant="secondary" className="ml-2">{screenshots.length}</Badge>
+                    )}
                 </div>
+                {screenshots.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {screenshots.map((img, idx) => (
+                        <ScreenshotCard 
+                          key={idx}
+                          imageUrl={img}
+                          gameTitle={game.title}
+                          index={idx}
+                          fallbackThumbnail={trailerThumbnail && idx === 0 ? trailerThumbnail : null}
+                        />
+                      ))}
+                    </div>
+                ) : (
+                    <Card className="bg-void-800 border-void-700 border-dashed">
+                        <CardContent className="py-16">
+                            <div className="text-center space-y-3">
+                                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-void-700 mb-4">
+                                    <ImageIcon className="h-8 w-8 text-gray-500" />
+                                </div>
+                                <p className="text-lg font-semibold text-gray-400">No screenshots available</p>
+                                <p className="text-sm text-gray-500">Screenshots will be available soon</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
             </div>
         </TabsContent>
         <TabsContent value="requirements" className="py-6">
@@ -199,8 +377,8 @@ export function GameDetailPage() {
                   <Card key={review.id} className="bg-void-800 border-void-700">
                     <CardContent className="p-6 flex gap-4">
                       <Avatar>
-                        <AvatarImage src={`https://i.pravatar.cc/150?u=${review.userId}`} />
-                        <AvatarFallback>{review.username.substring(0, 2)}</AvatarFallback>
+                        <AvatarImage src={review.avatar} />
+                        <AvatarFallback>{review.username.substring(0, 2).toUpperCase()}</AvatarFallback>
                       </Avatar>
                       <div>
                         <div className="flex items-center gap-4">
@@ -211,7 +389,7 @@ export function GameDetailPage() {
                             {[...Array(5)].map((_, i) => <Star key={i} className={`h-4 w-4 ${i < review.rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-600'}`} />)}
                           </div>
                         </div>
-                        <p className="text-sm text-gray-500">{formatDistanceToNow(new Date(review.createdAt), { addSuffix: true })}</p>
+                        <p className="text-sm text-gray-500">{formatDistanceToNow(new Date(review.createdAt), { addSuffix: true, includeSeconds: true })}</p>
                         <p className="mt-2 text-gray-300">{review.comment}</p>
                       </div>
                     </CardContent>

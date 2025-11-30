@@ -31,6 +31,7 @@ import { PublicProfilePage } from '@/pages/PublicProfilePage';
 import { GameForumPage } from '@/pages/GameForumPage';
 import { GameWorkshopPage } from '@/pages/GameWorkshopPage';
 import { SearchPage } from '@/pages/SearchPage';
+import { WebGLTestPage } from '@/pages/WebGLTestPage';
 import { Toaster } from '@/components/ui/sonner';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { useUserStatus } from '@/hooks/use-user-status';
@@ -87,6 +88,7 @@ const router = createBrowserRouter([
       { path: "/cart", element: <CartPage /> },
       { path: "/checkout", element: <CheckoutPage /> },
       { path: "/notifications", element: <NotificationsPage /> },
+      { path: "/webgl-test", element: <WebGLTestPage /> },
     ],
   },
 ]);
