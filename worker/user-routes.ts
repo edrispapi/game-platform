@@ -238,24 +238,9 @@ async function fetchUserProfile(db: DatabaseAdapter, userId: string): Promise<Us
   );
   const friendsCount = friendsResult?.count || row.friends_count || 0;
 
-  // Compute status based on last_seen: green (online), orange (offline recently), gray (offline long time)
-  // Only show as Online if user has actually logged in (has last_seen) and it's recent
-  let computedStatus: FriendStatus = 'Offline';
-  if (row.status === 'In Game') {
-    // In Game status is explicit and should be shown
-    computedStatus = 'In Game';
-  } else if (row.last_seen) {
-    const lastSeenDate = new Date(row.last_seen);
-    const minutesAgo = (Date.now() - lastSeenDate.getTime()) / (1000 * 60);
-    if (row.status === 'Online' && minutesAgo <= 5) {
-      // Only show as Online if status is explicitly Online AND last_seen is recent
-      computedStatus = 'Online'; // Green - online a few moments ago
-    } else if (minutesAgo <= 30) {
-      computedStatus = 'Offline'; // Orange - offline a few moments ago
-    } else {
-      computedStatus = 'Offline'; // Gray - offline long time ago
-    }
-  }
+  // For the profile view we trust the explicit status flag written by use-user-status.
+  // Friends lists still do their own last_seen-based computation separately.
+  const computedStatus: FriendStatus = (row.status as FriendStatus) || 'Offline';
 
   return {
     id: row.id,
@@ -329,7 +314,7 @@ export function userRoutes(app: Hono) {
         avatar: review.avatar_url || DEMO_AVATAR,
         rating: review.rating,
         comment: review.comment,
-        createdAt: new Date(review.created_at).getTime(),
+        createdAt: new Date(review.created_at + 'Z').getTime(), // Ensure UTC interpretation
       })),
     });
   });
@@ -347,10 +332,10 @@ export function userRoutes(app: Hono) {
       return notFound(c, 'Game not found');
     }
     const reviewId = crypto.randomUUID();
+    // Allow multiple reviews per (game,user) by using a simple INSERT without ON CONFLICT.
     await db.execute(
       `INSERT INTO game_reviews (id, game_id, user_id, rating, comment)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (game_id, user_id) DO UPDATE SET rating = EXCLUDED.rating, comment = EXCLUDED.comment`,
+       VALUES ($1, $2, $3, $4, $5)`,
       [reviewId, gameRow.id, userId, rating, comment.trim()]
     );
     // Fetch the actual created_at timestamp from database
@@ -463,6 +448,18 @@ export function userRoutes(app: Hono) {
     return ok(c, { success: true });
   });
 
+  // Update avatar for current user
+  app.post('/api/profile/avatar', async (c) => {
+    const db = getAdapter(c);
+    const userId = await resolveUserId(c, db);
+    const { avatarUrl } = await c.req.json<{ avatarUrl: string }>();
+    if (!avatarUrl) {
+      return bad(c, 'avatarUrl is required');
+    }
+    await db.execute('UPDATE users SET avatar_url = $1, updated_at = NOW() WHERE id = $2', [avatarUrl, userId]);
+    return ok(c, { success: true });
+  });
+
   app.post('/api/profile/change-password', async (c) => {
     const db = getAdapter(c);
     const userId = await resolveUserId(c, db);
@@ -524,6 +521,23 @@ export function userRoutes(app: Hono) {
       );
       return ok(c, { success: true });
     }
+  });
+
+  // Demo login endpoint: resolves a user by email (no real password check).
+  app.post('/api/login-demo', async (c) => {
+    const db = getAdapter(c);
+    const { email } = await c.req.json<{ email: string }>();
+    if (!email) {
+      return bad(c, 'Email is required');
+    }
+    const user = await db.queryOne<{ id: string; username: string; email: string }>(
+      'SELECT id, username, email FROM users WHERE LOWER(email) = LOWER($1)',
+      [email]
+    );
+    if (!user) {
+      return bad(c, 'User not found');
+    }
+    return ok(c, { id: user.id, username: user.username, email: user.email });
   });
 
   app.post('/api/register', async (c) => {
@@ -698,7 +712,20 @@ export function userRoutes(app: Hono) {
       `INSERT INTO friend_requests (id, sender_id, receiver_id, status) VALUES ($1, $2, $3, 'pending')`,
       [requestId, senderId, receiver.id]
     );
+
     const senderProfile = await fetchUserProfile(db, senderId);
+
+    // Create a notification for the receiver so it appears in /notifications
+    await db.execute(
+      `INSERT INTO notifications (id, user_id, type, message)
+       VALUES ($1, $2, 'friend-request', $3)`,
+      [
+        crypto.randomUUID(),
+        receiver.id,
+        `${senderProfile?.username || 'A player'} sent you a friend request`,
+      ]
+    );
+
     return ok(c, {
       id: requestId,
       fromUserId: senderId,
@@ -774,6 +801,26 @@ export function userRoutes(app: Hono) {
     return ok(c, { items: rows.map((row) => ({ id: row.id, username: row.username, avatar: row.avatar_url || DEMO_AVATAR })) });
   });
 
+  // Get sent friend requests (requests from current user to others)
+  app.get('/api/friend-requests/sent', async (c) => {
+    const db = getAdapter(c);
+    const userId = await resolveUserId(c, db);
+    const rows = await db.query<any>(
+      `SELECT fr.id, fr.receiver_id, fr.status, u.username
+       FROM friend_requests fr
+       JOIN users u ON u.id = fr.receiver_id
+       WHERE fr.sender_id = $1 AND fr.status = 'pending'
+       ORDER BY fr.created_at DESC`,
+      [userId]
+    );
+    return ok(c, { items: rows.map((row) => ({
+      id: row.id,
+      receiverId: row.receiver_id,
+      receiverUsername: row.username,
+      status: row.status,
+    })) });
+  });
+
   app.get('/api/users/recommended', async (c) => {
     const db = getAdapter(c);
     const userId = await resolveUserId(c, db).catch(() => null);
@@ -786,17 +833,19 @@ export function userRoutes(app: Hono) {
       AND u.id NOT IN (SELECT user_id FROM blocked_users WHERE blocked_user_id = $1)
     ` : '';
     
+    const pendingCheck = userId ? `EXISTS (
+                SELECT 1 FROM friend_requests fr 
+                WHERE fr.sender_id = $1 AND fr.receiver_id = u.id AND fr.status = 'pending'
+              )` : 'false';
+    
     const params = userId ? [userId] : [];
     const rows = await db.query<any>(
-      `SELECT u.id, u.username, u.bio, u.avatar_url,
-              COALESCE(SUM(upg.hours), 0) as hours_played,
-              (SELECT COUNT(DISTINCT CASE WHEN f.user_id = u.id THEN f.friend_id WHEN f.friend_id = u.id THEN f.user_id END)
-               FROM friends f
-               WHERE f.user_id = u.id OR f.friend_id = u.id) as friends_count
+      `SELECT u.id, u.username, u.bio, u.avatar_url, u.status,
+              COALESCE(u.hours_played, 0) as hours_played,
+              COALESCE(u.friends_count, 0) as friends_count,
+              ${pendingCheck} as has_pending_request
        FROM users u
-       LEFT JOIN user_playtime_by_genre upg ON upg.user_id = u.id
        WHERE 1=1 ${excludeClause}
-       GROUP BY u.id
        ORDER BY hours_played DESC, friends_count DESC
        LIMIT 50`
     , params);
@@ -809,6 +858,8 @@ export function userRoutes(app: Hono) {
         avatar: row.avatar_url || DEMO_AVATAR,
         hoursPlayed: Number(row.hours_played) || 0,
         friendsCount: Number(row.friends_count) || 0,
+        hasPendingRequest: Boolean(row.has_pending_request),
+        status: row.status || 'Offline',
       })),
     });
   });
@@ -826,19 +877,21 @@ export function userRoutes(app: Hono) {
       AND u.id NOT IN (SELECT user_id FROM blocked_users WHERE blocked_user_id = $1)
     ` : '';
     
+    const pendingCheck = userId ? `EXISTS (
+                SELECT 1 FROM friend_requests fr 
+                WHERE fr.sender_id = $1 AND fr.receiver_id = u.id AND fr.status = 'pending'
+              )` : 'false';
+    
     const params = userId ? [userId, limit, offset] : [limit, offset];
     const paramOffset = userId ? 1 : 0;
     
     const rows = await db.query<any>(
-      `SELECT u.id, u.username, u.bio, u.avatar_url,
-              COALESCE(SUM(upg.hours), 0) as hours_played,
-              (SELECT COUNT(DISTINCT CASE WHEN f.user_id = u.id THEN f.friend_id WHEN f.friend_id = u.id THEN f.user_id END)
-               FROM friends f
-               WHERE f.user_id = u.id OR f.friend_id = u.id) as friends_count
+      `SELECT u.id, u.username, u.bio, u.avatar_url, u.status,
+              COALESCE(u.hours_played, 0) as hours_played,
+              COALESCE(u.friends_count, 0) as friends_count,
+              ${pendingCheck} as has_pending_request
        FROM users u
-       LEFT JOIN user_playtime_by_genre upg ON upg.user_id = u.id
        WHERE 1=1 ${excludeClause}
-       GROUP BY u.id
        ORDER BY u.username ASC
        LIMIT $${paramOffset + 1} OFFSET $${paramOffset + 2}`
     , params);
@@ -851,6 +904,8 @@ export function userRoutes(app: Hono) {
         avatar: row.avatar_url || DEMO_AVATAR,
         hoursPlayed: Number(row.hours_played) || 0,
         friendsCount: Number(row.friends_count) || 0,
+        hasPendingRequest: Boolean(row.has_pending_request),
+        status: row.status || 'Offline',
       })),
     });
   });

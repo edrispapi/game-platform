@@ -4,12 +4,22 @@ import type { ApiResponse } from "../../shared/types";
 export const queryClient = new QueryClient();
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...(init?.headers || {}),
+  };
+
+  // Attach current user id (demo auth) if available so backend can resolve the user
+  if (typeof window !== 'undefined') {
+    const userId = window.localStorage.getItem('crimson-user-id');
+    if (userId) {
+      (headers as any)['x-user-id'] = userId;
+    }
+  }
+
   const res = await fetch(path, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers || {}),
-    },
     ...init,
+    headers,
   });
 
   let json: ApiResponse<T> | null = null;

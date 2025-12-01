@@ -4,16 +4,148 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { UserPlus, Search, X } from "lucide-react";
+import { UserPlus, Search, X, Sparkles, Users, Clock, Shuffle, ExternalLink, Gamepad2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { Friend, Game, FriendRequest, UserProfile } from "@shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useState, useMemo } from "react";
 import { UserLink } from "@/components/UserLink";
+import { cn } from "@/lib/utils";
+
+// Modern User Card Component for Add Friend Dialog
+function UserCard({ 
+  user, 
+  onAddFriend, 
+  isPending,
+  showStats = true,
+  hasPendingRequest = false
+}: { 
+  user: any; 
+  onAddFriend: (username: string) => void; 
+  isPending: boolean;
+  showStats?: boolean;
+  hasPendingRequest?: boolean;
+}) {
+  const navigate = useNavigate();
+  
+  const statusColors: Record<string, string> = {
+    'Online': 'bg-emerald-500',
+    'In Game': 'bg-violet-500',
+    'Offline': 'bg-gray-500'
+  };
+
+  return (
+    <div className="group relative">
+      {/* Gradient border effect */}
+      <div className="absolute -inset-[1px] bg-gradient-to-r from-blood-500/0 via-blood-500/0 to-blood-500/0 group-hover:from-blood-500/50 group-hover:via-crimson-500/50 group-hover:to-blood-500/50 rounded-xl transition-all duration-500 blur-sm" />
+      
+      <div className="relative flex items-center gap-4 p-4 bg-gradient-to-br from-void-800/90 to-void-900/90 backdrop-blur-sm rounded-xl border border-void-600/50 group-hover:border-blood-500/30 transition-all duration-300">
+        {/* Clickable Avatar & Info */}
+        <button 
+          onClick={() => navigate(`/user/${user.username}`)}
+          className="flex items-center gap-4 flex-1 text-left group/profile"
+        >
+          {/* Avatar with status ring */}
+          <div className="relative">
+            <div className={cn(
+              "absolute -inset-1 rounded-full opacity-0 group-hover/profile:opacity-100 transition-opacity duration-300",
+              user.status === 'Online' && "bg-emerald-500/20",
+              user.status === 'In Game' && "bg-violet-500/20 animate-pulse",
+              user.status === 'Offline' && "bg-gray-500/10"
+            )} />
+            <Avatar className="h-12 w-12 ring-2 ring-void-600 group-hover/profile:ring-blood-500/50 transition-all duration-300">
+              <AvatarImage src={user.avatar} className="object-cover" />
+              <AvatarFallback className="bg-gradient-to-br from-blood-600 to-crimson-700 text-white font-bold">
+                {user.username?.substring(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            {/* Status indicator */}
+            <div className={cn(
+              "absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-void-800",
+              statusColors[user.status] || 'bg-gray-500'
+            )}>
+              {user.status === 'In Game' && (
+                <Gamepad2 className="w-2 h-2 text-white absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+              )}
+            </div>
+          </div>
+          
+          {/* User info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-white group-hover/profile:text-blood-400 transition-colors truncate">
+                {user.username}
+              </span>
+              <ExternalLink className="w-3 h-3 text-gray-500 opacity-0 group-hover/profile:opacity-100 transition-opacity" />
+            </div>
+            
+            {showStats ? (
+              <div className="flex items-center gap-3 text-xs text-gray-400 mt-1">
+                {user.hoursPlayed > 0 && (
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {user.hoursPlayed.toLocaleString()}h
+                  </span>
+                )}
+                {user.friendsCount > 0 && (
+                  <span className="flex items-center gap-1">
+                    <Users className="w-3 h-3" />
+                    {user.friendsCount}
+                  </span>
+                )}
+                {!user.hoursPlayed && !user.friendsCount && (
+                  <span className="text-gray-500 italic">New player</span>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400 truncate mt-0.5">
+                {user.bio || user.status || 'No bio'}
+              </p>
+            )}
+          </div>
+        </button>
+        
+        {/* Add button */}
+        <Button
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!hasPendingRequest) {
+              onAddFriend(user.username);
+            }
+          }}
+          disabled={isPending || hasPendingRequest}
+          className={cn(
+            "relative overflow-hidden border-0 shadow-lg transition-all duration-300",
+            hasPendingRequest 
+              ? "bg-gradient-to-r from-amber-600/80 to-yellow-600/80 shadow-amber-500/20 cursor-not-allowed" 
+              : "bg-gradient-to-r from-blood-600 to-crimson-600 hover:from-blood-500 hover:to-crimson-500 shadow-blood-500/20 hover:shadow-blood-500/40"
+          )}
+        >
+          {hasPendingRequest ? (
+            <>
+              <Clock className="h-4 w-4 mr-1.5 animate-pulse" />
+              <span>Pending</span>
+            </>
+          ) : (
+            <>
+              <UserPlus className="h-4 w-4 mr-1.5" />
+              <span>Add</span>
+            </>
+          )}
+          {/* Shine effect */}
+          {!hasPendingRequest && (
+            <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
 function BlockedUsersTab() {
   const queryClient = useQueryClient();
   const { data: blockedResponse, isLoading, isError } = useQuery({
@@ -167,7 +299,7 @@ export function FriendsPage() {
   });
 
   const [discoverTab, setDiscoverTab] = useState<'recommended' | 'all'>('recommended');
-  
+
   const { data: recommendedResponse, isLoading: isLoadingRecommended } = useQuery({
     queryKey: ['users-recommended'],
     queryFn: () => api<{ items: any[] }>('/api/users/recommended'),
@@ -278,164 +410,212 @@ export function FriendsPage() {
           </Button>
           
           <Dialog open={addFriendOpen} onOpenChange={setAddFriendOpen}>
-            <DialogContent className="bg-void-800 border-void-700 text-white">
-              <div className="space-y-4">
-                <DialogHeader>
-                  <DialogTitle className="text-2xl font-orbitron">Add Friend</DialogTitle>
-                  <DialogDescription className="text-gray-400">
-                    Search for players by username to send a friend request
+            <DialogContent className="bg-gradient-to-b from-void-800 to-void-900 border border-void-600/50 text-white max-w-xl backdrop-blur-xl shadow-2xl shadow-black/50">
+              {/* Background decoration */}
+              <div className="absolute inset-0 overflow-hidden rounded-lg pointer-events-none">
+                <div className="absolute -top-24 -right-24 w-48 h-48 bg-blood-500/10 rounded-full blur-3xl" />
+                <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-crimson-500/10 rounded-full blur-3xl" />
+              </div>
+              
+              <div className="relative space-y-5">
+                {/* Header */}
+                <DialogHeader className="space-y-3">
+                  <DialogTitle className="text-3xl font-orbitron bg-gradient-to-r from-white via-gray-100 to-gray-300 bg-clip-text text-transparent flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-blood-500 to-crimson-600 rounded-xl shadow-lg shadow-blood-500/30">
+                      <UserPlus className="w-6 h-6 text-white" />
+                    </div>
+                    Add Friend
+                  </DialogTitle>
+                  <DialogDescription className="text-gray-400 text-base">
+                    Search for players or discover new gaming buddies
                   </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4">
-                <div className="relative">
-                  <Input
-                    placeholder="Search by username..."
-                    className="pl-10 bg-void-700 border-void-600 text-white"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+
+                {/* Search Input */}
+                <div className="relative group">
+                  <div className="absolute -inset-0.5 bg-gradient-to-r from-blood-500/50 to-crimson-500/50 rounded-xl blur opacity-0 group-focus-within:opacity-100 transition-opacity duration-300" />
+                  <div className="relative">
+                    <Input
+                      placeholder="Search by username..."
+                      className="pl-12 pr-4 py-6 bg-void-800/80 border-void-600/50 text-white text-lg rounded-xl focus:border-blood-500/50 transition-all placeholder:text-gray-500"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    {searchQuery && (
+                      <button 
+                        onClick={() => setSearchQuery('')}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 p-1 hover:bg-void-700 rounded-full transition-colors"
+                      >
+                        <X className="h-4 w-4 text-gray-400" />
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                {/* Search Results */}
                 {isSearching && (
-                  <div className="flex justify-center py-4">
-                    <Skeleton className="h-20 w-full" />
+                  <div className="space-y-3">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <div key={i} className="flex items-center gap-4 p-4 bg-void-800/50 rounded-xl animate-pulse">
+                        <div className="w-12 h-12 rounded-full bg-void-700" />
+                        <div className="flex-1 space-y-2">
+                          <div className="h-4 w-24 bg-void-700 rounded" />
+                          <div className="h-3 w-32 bg-void-700/50 rounded" />
+                        </div>
+                        <div className="h-9 w-20 bg-void-700 rounded-lg" />
+                      </div>
+                    ))}
                   </div>
                 )}
+
                 {searchQuery.length >= 2 && !isSearching && searchResults?.items && (
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                  <div className="space-y-3 max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-void-600 scrollbar-track-transparent pr-2">
                     {searchResults.items.length > 0 ? (
-                      searchResults.items.map((user) => (
-                        <div
-                          key={user.id}
-                          className="flex items-center justify-between p-3 bg-void-700 rounded-lg border border-void-600 hover:border-blood-500 transition-colors"
-                        >
-                          <div className="flex items-center gap-3">
-                            <Avatar className="h-10 w-10">
-                              <AvatarImage src={user.avatar} />
-                              <AvatarFallback>{user.username.substring(0, 2).toUpperCase()}</AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="font-bold">{user.username}</p>
-                              <p className="text-sm text-gray-400">{user.bio || 'No bio'}</p>
-                            </div>
-                          </div>
-                          <Button
-                            size="sm"
-                            className="bg-blood-500 hover:bg-blood-600"
-                            onClick={() => addFriendMutation.mutate(user.username)}
-                            disabled={addFriendMutation.isPending}
-                          >
-                            <UserPlus className="h-4 w-4 mr-1" />
-                            Add
-                          </Button>
-                        </div>
-                      ))
+                      <>
+                        <p className="text-xs text-gray-500 uppercase tracking-wider px-1">
+                          {searchResults.items.length} result{searchResults.items.length !== 1 ? 's' : ''} found
+                        </p>
+                        {searchResults.items.map((user: any) => (
+                          <UserCard
+                            key={user.id}
+                            user={user}
+                            onAddFriend={(username) => addFriendMutation.mutate(username)}
+                            isPending={addFriendMutation.isPending}
+                            showStats={false}
+                            hasPendingRequest={user.hasPendingRequest}
+                          />
+                        ))}
+                      </>
                     ) : (
-                      <p className="text-center text-gray-400 py-4">No users found</p>
+                      <div className="text-center py-8">
+                        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-void-700/50 flex items-center justify-center">
+                          <Search className="w-8 h-8 text-gray-500" />
+                        </div>
+                        <p className="text-gray-400">No players found for "{searchQuery}"</p>
+                        <p className="text-sm text-gray-500 mt-1">Try a different search term</p>
+                      </div>
                     )}
                   </div>
                 )}
+
+                {/* Discovery Tabs */}
                 {searchQuery.length < 2 && (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex gap-2">
-                        <Button
-                          variant={discoverTab === 'recommended' ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => setDiscoverTab('recommended')}
-                        >
-                          Recommended
-                        </Button>
-                        <Button
-                          variant={discoverTab === 'all' ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => setDiscoverTab('all')}
-                        >
-                          Discover All Users
-                        </Button>
-                      </div>
-                      <div className="flex gap-2 text-xs">
-                        <Button
-                          variant={recommendSort === 'hours' ? 'default' : 'outline'}
-                          size="xs"
-                          onClick={() => setRecommendSort('hours')}
-                        >
-                          Best players
-                        </Button>
-                        <Button
-                          variant={recommendSort === 'friends' ? 'default' : 'outline'}
-                          size="xs"
-                          onClick={() => setRecommendSort('friends')}
-                        >
-                          Most popular
-                        </Button>
-                        <Button
-                          variant={recommendSort === 'random' ? 'default' : 'outline'}
-                          size="xs"
-                          onClick={() => setRecommendSort('random')}
-                        >
-                          Random
-                        </Button>
+                  <div className="space-y-4">
+                    {/* Tab buttons */}
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setDiscoverTab('recommended')}
+                        className={cn(
+                          "flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300",
+                          discoverTab === 'recommended'
+                            ? "bg-gradient-to-r from-blood-600 to-crimson-600 text-white shadow-lg shadow-blood-500/30"
+                            : "bg-void-700/50 text-gray-400 hover:text-white hover:bg-void-700"
+                        )}
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        Recommended
+                      </button>
+                      <button
+                        onClick={() => setDiscoverTab('all')}
+                        className={cn(
+                          "flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300",
+                          discoverTab === 'all'
+                            ? "bg-gradient-to-r from-blood-600 to-crimson-600 text-white shadow-lg shadow-blood-500/30"
+                            : "bg-void-700/50 text-gray-400 hover:text-white hover:bg-void-700"
+                        )}
+                      >
+                        <Users className="w-4 h-4" />
+                        All Players
+                      </button>
+                    </div>
+
+                    {/* Sort options */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 uppercase tracking-wider">Sort by:</span>
+                      <div className="flex gap-1.5">
+                        {[
+                          { key: 'hours' as const, label: 'Top Players', icon: Clock },
+                          { key: 'friends' as const, label: 'Popular', icon: Users },
+                          { key: 'random' as const, label: 'Shuffle', icon: Shuffle },
+                        ].map(({ key, label, icon: Icon }) => (
+                          <button
+                            key={key}
+                            onClick={() => setRecommendSort(key)}
+                            className={cn(
+                              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200",
+                              recommendSort === key
+                                ? "bg-blood-500/20 text-blood-400 border border-blood-500/30"
+                                : "bg-void-700/30 text-gray-400 hover:text-white hover:bg-void-700/50 border border-transparent"
+                            )}
+                          >
+                            <Icon className="w-3 h-3" />
+                            {label}
+                          </button>
+                        ))}
                       </div>
                     </div>
+
+                    {/* User list */}
                     {isLoadingItems ? (
-                      <div className="space-y-2">
-                        {Array.from({ length: 3 }).map((_, i) => (
-                          <Skeleton key={i} className="h-16 w-full rounded-lg" />
+                      <div className="space-y-3">
+                        {Array.from({ length: 4 }).map((_, i) => (
+                          <div key={i} className="flex items-center gap-4 p-4 bg-void-800/50 rounded-xl animate-pulse" style={{ animationDelay: `${i * 100}ms` }}>
+                            <div className="w-12 h-12 rounded-full bg-void-700" />
+                            <div className="flex-1 space-y-2">
+                              <div className="h-4 w-24 bg-void-700 rounded" />
+                              <div className="h-3 w-32 bg-void-700/50 rounded" />
+                            </div>
+                            <div className="h-9 w-20 bg-void-700 rounded-lg" />
+                          </div>
                         ))}
                       </div>
                     ) : (
-                      <div className="space-y-2 max-h-64 overflow-y-auto">
-                        {sortedRecommendedItems.length ? (
-                          sortedRecommendedItems.map((user) => (
-                            <div
-                              key={user.id}
-                              className="flex items-center justify-between p-3 bg-void-700 rounded-lg border border-void-600 hover:border-blood-500 transition-colors"
+                      <div className="space-y-3 max-h-72 overflow-y-auto scrollbar-thin scrollbar-thumb-void-600 scrollbar-track-transparent pr-2">
+                        {sortedRecommendedItems.length > 0 ? (
+                          sortedRecommendedItems.map((user, index) => (
+                            <div 
+                              key={user.id} 
+                              className="animate-fade-in"
+                              style={{ animationDelay: `${index * 50}ms` }}
                             >
-                              <div className="flex items-center gap-3">
-                                <Avatar className="h-10 w-10">
-                                  <AvatarImage src={user.avatar} />
-                                  <AvatarFallback>{user.username.substring(0, 2).toUpperCase()}</AvatarFallback>
-                                </Avatar>
-                                <div>
-                                  <p className="font-bold">{user.username}</p>
-                                  <p className="text-xs text-gray-400">
-                                    {user.hoursPlayed ? `${user.hoursPlayed} hrs played` : 'New player'}
-                                    {user.friendsCount ? ` • ${user.friendsCount} friends` : ''}
-                                  </p>
-                                </div>
-                              </div>
-                              <Button
-                                size="sm"
-                                className="bg-blood-500 hover:bg-blood-600"
-                                onClick={() => addFriendMutation.mutate(user.username)}
-                                disabled={addFriendMutation.isPending}
-                              >
-                                <UserPlus className="h-4 w-4 mr-1" />
-                                Add
-                              </Button>
+                              <UserCard
+                                user={user}
+                                onAddFriend={(username) => addFriendMutation.mutate(username)}
+                                isPending={addFriendMutation.isPending}
+                                showStats={true}
+                                hasPendingRequest={user.hasPendingRequest}
+                              />
                             </div>
                           ))
                         ) : (
-                          <p className="text-center text-gray-400 py-4">No suggestions available.</p>
+                          <div className="text-center py-8">
+                            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-void-700/50 flex items-center justify-center">
+                              <Users className="w-8 h-8 text-gray-500" />
+                            </div>
+                            <p className="text-gray-400">No players to show</p>
+                            <p className="text-sm text-gray-500 mt-1">Check back later for recommendations</p>
+                          </div>
                         )}
                       </div>
                     )}
                   </div>
                 )}
-                <DialogFooter>
+
+                {/* Footer */}
+                <DialogFooter className="border-t border-void-700/50 pt-4 mt-2">
                   <Button
                     variant="outline"
                     onClick={() => {
                       setAddFriendOpen(false);
                       setSearchQuery('');
                     }}
+                    className="bg-void-700/50 border-void-600/50 hover:bg-void-700 hover:border-void-500 transition-all"
                   >
-                    Cancel
+                    Close
                   </Button>
                 </DialogFooter>
               </div>
-            </div>
             </DialogContent>
           </Dialog>
         </div>

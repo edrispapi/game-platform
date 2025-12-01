@@ -21,6 +21,7 @@ import ReactPlayer from 'react-player/youtube';
 import { UserLink } from "@/components/UserLink";
 import { GAME_TRAILERS, getYoutubeThumbnail } from "@shared/trailers";
 import { WebGLImage } from "@/components/WebGLImage";
+import { CommentReactions } from "@/components/CommentReactions";
 
 // Screenshot Card Component with Error Handling
 function ScreenshotCard({ imageUrl, gameTitle, index, fallbackThumbnail }: { 
@@ -105,12 +106,66 @@ function ScreenshotCard({ imageUrl, gameTitle, index, fallbackThumbnail }: {
   );
 }
 
+function ReviewCard({ review }: { review: GameReview }) {
+  const [expanded, setExpanded] = useState(false);
+  const lines = review.comment.split('\n');
+  const isLong = lines.length > 13 || review.comment.length > 800;
+  const displayComment = !isLong || expanded
+    ? review.comment
+    : lines.slice(0, 13).join('\n');
+
+  return (
+    <CardContent className="p-6 flex gap-4">
+      <Avatar>
+        <AvatarImage src={review.avatar} />
+        <AvatarFallback>{review.username.substring(0, 2).toUpperCase()}</AvatarFallback>
+      </Avatar>
+      <div className="flex-1 min-w-0">
+        <div className="flex flex-wrap items-center gap-3">
+          <UserLink username={review.username} className="font-bold">
+            {review.username}
+          </UserLink>
+          <div className="flex items-center">
+            {[...Array(5)].map((_, i) => (
+              <Star
+                key={i}
+                className={`h-4 w-4 ${i < review.rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-600'}`}
+              />
+            ))}
+          </div>
+        </div>
+        <p className="text-sm text-gray-500">
+          {formatDistanceToNow(new Date(review.createdAt), { addSuffix: true, includeSeconds: true })}
+        </p>
+        <p className="mt-2 text-gray-300 whitespace-pre-wrap break-words">
+          {displayComment}
+          {isLong && !expanded && (
+            <button
+              type="button"
+              className="ml-2 text-xs text-blood-400 hover:text-blood-300 underline"
+              onClick={() => setExpanded(true)}
+            >
+              Read more
+            </button>
+          )}
+        </p>
+        <CommentReactions
+          onAwardClick={() => {
+            // Placeholder – actual award purchase popup is handled at page level
+          }}
+        />
+      </div>
+    </CardContent>
+  );
+}
+
 export function GameDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const queryClient = useQueryClient();
   const addToCart = useCartStore(s => s.addToCart);
   const cartItems = useCartStore(s => s.items);
   const [newReview, setNewReview] = useState({ rating: 0, comment: '' });
+  const [showAllReviews, setShowAllReviews] = useState(false);
   const { data: game, isLoading: isLoadingGame, isError: isGameError } = useQuery({
     queryKey: ['game', slug],
     queryFn: () => api<Game>(`/api/games/${slug}`),
@@ -122,6 +177,8 @@ export function GameDetailPage() {
     enabled: !!slug,
   });
   const reviews = reviewsResponse?.items ?? [];
+  const totalReviews = reviews.length;
+  const visibleReviews = showAllReviews ? reviews : reviews.slice(0, 10);
   const reviewMutation = useMutation({
     mutationFn: (review: Omit<GameReview, 'id' | 'userId' | 'username' | 'createdAt'>) =>
       api<GameReview>(`/api/games/${slug}/reviews`, {
@@ -232,13 +289,15 @@ export function GameDetailPage() {
       </div>
       {/* Main Content */}
       <Tabs defaultValue="description" className="w-full">
-        <TabsList className="grid w-full grid-cols-6 bg-void-800 border-void-700">
-          <TabsTrigger value="description">Description</TabsTrigger>
-          <TabsTrigger value="media">Media</TabsTrigger>
-          <TabsTrigger value="requirements">System Requirements</TabsTrigger>
-          <TabsTrigger value="reviews">Reviews</TabsTrigger>
-          <TabsTrigger value="forum">Forum</TabsTrigger>
-          <TabsTrigger value="workshop">Workshop</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 bg-void-800 border-void-700 h-10 sm:h-9">
+          <TabsTrigger value="description" className="text-[11px] sm:text-xs md:text-sm">Description</TabsTrigger>
+          <TabsTrigger value="media" className="text-[11px] sm:text-xs md:text-sm">Media</TabsTrigger>
+          <TabsTrigger value="requirements" className="text-[11px] sm:text-xs md:text-sm text-center px-1">
+            System Requirements
+          </TabsTrigger>
+          <TabsTrigger value="reviews" className="text-[11px] sm:text-xs md:text-sm">Reviews</TabsTrigger>
+          <TabsTrigger value="forum" className="text-[11px] sm:text-xs md:text-sm">Forum</TabsTrigger>
+          <TabsTrigger value="workshop" className="text-[11px] sm:text-xs md:text-sm">Workshop</TabsTrigger>
         </TabsList>
         <TabsContent value="description" className="py-6 text-lg text-gray-300 leading-relaxed">
           <p>{game.description}</p>
@@ -273,11 +332,11 @@ export function GameDetailPage() {
                                 
                                 {/* Video Player */}
                                 <div className="relative z-10 w-full h-full">
-                                    <ReactPlayer 
-                                        url={trailerUrl} 
-                                        width="100%" 
-                                        height="100%" 
-                                        controls
+                        <ReactPlayer 
+                            url={trailerUrl} 
+                            width="100%" 
+                            height="100%" 
+                            controls
                                         playing={false}
                                         light={false}
                                         playIcon={
@@ -287,17 +346,17 @@ export function GameDetailPage() {
                                                 </div>
                                             </div>
                                         }
-                                        onError={(error) => {
-                                            console.error('Video player error:', error);
-                                            toast.error('Failed to load trailer video');
-                                        }}
+                            onError={(error) => {
+                                console.error('Video player error:', error);
+                                toast.error('Failed to load trailer video');
+                            }}
                                     />
                                 </div>
                                 
                                 {/* Decorative Corner Accents */}
                                 <div className="absolute top-0 left-0 w-20 h-20 border-t-2 border-l-2 border-blood-500/30" />
                                 <div className="absolute bottom-0 right-0 w-20 h-20 border-b-2 border-r-2 border-blood-500/30" />
-                            </div>
+                    </div>
                         </CardContent>
                     </Card>
                 ) : (
@@ -308,8 +367,8 @@ export function GameDetailPage() {
                                     <Play className="h-8 w-8 text-gray-500" />
                                 </div>
                                 <p className="text-lg font-semibold text-gray-400">No trailer available</p>
-                                <p className="text-sm text-gray-500">Trailer video will be available soon</p>
-                            </div>
+                            <p className="text-sm text-gray-500">Trailer video will be available soon</p>
+                        </div>
                         </CardContent>
                     </Card>
                 )}
@@ -324,19 +383,19 @@ export function GameDetailPage() {
                         <Badge variant="secondary" className="ml-2">{screenshots.length}</Badge>
                     )}
                 </div>
-                {screenshots.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {screenshots.map((img, idx) => (
+              {screenshots.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {screenshots.map((img, idx) => (
                         <ScreenshotCard 
-                          key={idx}
+                      key={idx}
                           imageUrl={img}
                           gameTitle={game.title}
                           index={idx}
                           fallbackThumbnail={trailerThumbnail && idx === 0 ? trailerThumbnail : null}
                         />
-                      ))}
-                    </div>
-                ) : (
+                  ))}
+                </div>
+              ) : (
                     <Card className="bg-void-800 border-void-700 border-dashed">
                         <CardContent className="py-16">
                             <div className="text-center space-y-3">
@@ -344,11 +403,11 @@ export function GameDetailPage() {
                                     <ImageIcon className="h-8 w-8 text-gray-500" />
                                 </div>
                                 <p className="text-lg font-semibold text-gray-400">No screenshots available</p>
-                                <p className="text-sm text-gray-500">Screenshots will be available soon</p>
-                            </div>
+                    <p className="text-sm text-gray-500">Screenshots will be available soon</p>
+                  </div>
                         </CardContent>
                     </Card>
-                )}
+              )}
             </div>
         </TabsContent>
         <TabsContent value="requirements" className="py-6">
@@ -373,26 +432,9 @@ export function GameDetailPage() {
               {isLoadingReviews ? (
                 Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-32 w-full rounded-lg" />)
               ) : reviews.length > 0 ? (
-                reviews.map(review => (
+                visibleReviews.map(review => (
                   <Card key={review.id} className="bg-void-800 border-void-700">
-                    <CardContent className="p-6 flex gap-4">
-                      <Avatar>
-                        <AvatarImage src={review.avatar} />
-                        <AvatarFallback>{review.username.substring(0, 2).toUpperCase()}</AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <div className="flex items-center gap-4">
-                          <UserLink username={review.username} className="font-bold">
-                            {review.username}
-                          </UserLink>
-                          <div className="flex items-center">
-                            {[...Array(5)].map((_, i) => <Star key={i} className={`h-4 w-4 ${i < review.rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-600'}`} />)}
-                          </div>
-                        </div>
-                        <p className="text-sm text-gray-500">{formatDistanceToNow(new Date(review.createdAt), { addSuffix: true, includeSeconds: true })}</p>
-                        <p className="mt-2 text-gray-300">{review.comment}</p>
-                      </div>
-                    </CardContent>
+                    <ReviewCard review={review} />
                   </Card>
                 ))
               ) : (
@@ -434,6 +476,19 @@ export function GameDetailPage() {
                   </form>
                 </CardContent>
               </Card>
+              {/* Pagination / show all */}
+              {totalReviews > 10 && (
+                <p className="mt-4 text-xs text-gray-500 text-center">
+                  Showing {visibleReviews.length} of {totalReviews} reviews ·{' '}
+                  <button
+                    type="button"
+                    className="text-blood-400 hover:text-blood-300 underline"
+                    onClick={() => setShowAllReviews(true)}
+                  >
+                    Browse all {totalReviews} reviews
+                  </button>
+                </p>
+              )}
             </div>
           </div>
         </TabsContent>

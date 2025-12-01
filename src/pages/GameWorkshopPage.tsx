@@ -19,6 +19,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { UserLink } from "@/components/UserLink";
 import { WebGLImage } from "@/components/WebGLImage";
 import { generateWorkshopBanner } from "@/utils/workshop-banner";
+import { CommentReactions } from "@/components/CommentReactions";
 
 export function GameWorkshopPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -342,6 +343,7 @@ export function GameWorkshopPage() {
                           <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
                         ))}
                       </div>
+                      <CommentReactions compact />
                     </CardContent>
                   </Card>
                 ))}
@@ -432,6 +434,7 @@ export function GameWorkshopPage() {
                         <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
                       ))}
                     </div>
+                    <CommentReactions compact />
                   </CardContent>
                 </Card>
               ))}

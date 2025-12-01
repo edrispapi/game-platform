@@ -63,8 +63,8 @@ export function CartPage() {
                     Deselect All
                   </Button>
                   <Button variant="destructive" size="sm" onClick={clearCart} className="text-xs sm:text-sm">
-                    Clear Cart
-                  </Button>
+                  Clear Cart
+                </Button>
                 </div>
               </CardTitle>
             </CardHeader>

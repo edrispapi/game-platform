@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Clock, Trophy, Users, X, Gamepad2 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { Game, UserProfile, Order, Friend } from "@shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,6 +18,7 @@ import { AchievementsPage } from "./AchievementsPage";
 import { Link } from "react-router-dom";
 import { Progress } from "@/components/ui/progress";
 import { UserLink } from "@/components/UserLink";
+import { cn } from "@/lib/utils";
 
 function OrderHistory() {
   const { data: ordersResponse, isLoading, isError } = useQuery({
@@ -68,6 +69,7 @@ function OrderHistory() {
 export function ProfilePage() {
   const [hoursDialogOpen, setHoursDialogOpen] = useState(false);
   const [friendsDialogOpen, setFriendsDialogOpen] = useState(false);
+  const [avatarDialogOpen, setAvatarDialogOpen] = useState(false);
   
   const { data: profile, isLoading: isLoadingProfile, isError: isProfileError } = useQuery<UserProfile>({
     queryKey: ['profile'],
@@ -91,6 +93,42 @@ export function ProfilePage() {
     queryFn: () => api<{ items: Game[] }>('/api/games'),
   });
   const favoriteGames = gamesResponse?.items.filter(game => profile?.favoriteGames.includes(game.slug)) ?? [];
+
+  // Predefined gaming avatars (can be extended)
+  const avatarOptions = [
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=player1",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=rogue",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=sniper",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=wizard",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=assassin",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=tank",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=healer",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=ranger",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=cyberpunk",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=mech",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=pirate",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=ninja",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=dragonborn",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=paladin",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=necromancer",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=space-marine",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=ghost",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=alien",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=robot",
+    "https://api.dicebear.com/7.x/avataaars/svg?seed=arcade",
+  ];
+
+  const changeAvatarMutation = useMutation({
+    mutationFn: (avatarUrl: string) =>
+      api<{ success: boolean }>("/api/profile/avatar", {
+        method: "POST",
+        body: JSON.stringify({ avatarUrl }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+      setAvatarDialogOpen(false);
+    },
+  });
   
   if (isLoadingProfile) {
     return (
@@ -125,10 +163,13 @@ export function ProfilePage() {
       <Card className="bg-void-800 border-void-700">
         <CardContent className="p-6 flex items-center gap-6">
           <div className="relative">
-            <Avatar className="h-24 w-24 border-4 border-blood-500">
-              <AvatarImage src={profile.avatar} alt={profile.username} />
-              <AvatarFallback>{profile.username.substring(0, 2).toUpperCase()}</AvatarFallback>
-            </Avatar>
+          <Avatar
+            className="h-24 w-24 border-4 border-blood-500 cursor-pointer group"
+            onClick={() => setAvatarDialogOpen(true)}
+          >
+            <AvatarImage src={profile.avatar} alt={profile.username} />
+            <AvatarFallback>{profile.username.substring(0, 2).toUpperCase()}</AvatarFallback>
+          </Avatar>
             {profile.status && !profile.settings.hideOnlineStatus && (
               <div className={`absolute -bottom-1 -right-1 h-6 w-6 rounded-full border-4 border-void-800 flex items-center justify-center ${
                 profile.status === 'Online' ? 'bg-green-500' : 
@@ -147,7 +188,7 @@ export function ProfilePage() {
           </div>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-orbitron font-bold">{profile.username}</h1>
+            <h1 className="text-3xl font-orbitron font-bold">{profile.username}</h1>
               {profile.status && !profile.settings.hideOnlineStatus && (
                 <Badge variant="outline" className={
                   profile.status === 'Online' ? 'border-green-500 text-green-400' : 
@@ -185,6 +226,45 @@ export function ProfilePage() {
           </Button>
         </CardContent>
       </Card>
+
+      {/* Avatar Picker Dialog */}
+      <Dialog open={avatarDialogOpen} onOpenChange={setAvatarDialogOpen}>
+        <DialogContent className="bg-void-900 border-void-700 text-white max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-2xl">
+              <Gamepad2 className="h-6 w-6 text-blood-500" />
+              Choose Your Avatar
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-400 mb-4">
+            Pick one of the gaming avatars below. You can change this at any time.
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+            {avatarOptions.map((url) => (
+              <button
+                key={url}
+                type="button"
+                onClick={() => changeAvatarMutation.mutate(url)}
+                className={cn(
+                  "relative rounded-xl border p-2 bg-void-800 hover:bg-void-700 transition-all flex flex-col items-center gap-2",
+                  profile.avatar === url
+                    ? "border-blood-500 shadow-[0_0_18px_rgba(239,68,68,0.35)]"
+                    : "border-void-700 hover:border-blood-500/60"
+                )}
+              >
+                <img
+                  src={url}
+                  alt="Avatar option"
+                  className="h-20 w-20 rounded-full border border-void-600 bg-void-900 object-contain"
+                />
+                {profile.avatar === url && (
+                  <span className="text-xs text-blood-300 font-semibold">Selected</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Hours Played Dialog */}
       <Dialog open={hoursDialogOpen} onOpenChange={setHoursDialogOpen}>

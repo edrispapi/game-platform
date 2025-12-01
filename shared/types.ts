@@ -29,6 +29,11 @@ export interface GameReview {
   rating: number; // 1-5
   comment: string;
   createdAt: number;
+  // Optional local-only fields for UI reactions (not yet persisted)
+  helpfulYesCount?: number;
+  helpfulNoCount?: number;
+  funnyCount?: number;
+  awardCount?: number;
 }
 export interface Game {
   id: string;

@@ -5,14 +5,31 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link, useNavigate } from "react-router-dom";
 import { AuthLayout } from "@/components/layout/AuthLayout";
-import React from "react";
+import React, { useState } from "react";
+import { api } from "@/lib/api-client";
 export function LoginPage() {
   const navigate = useNavigate();
-  const handleLogin = (e: React.FormEvent) => {
+  const [email, setEmail] = useState("");
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // In a real app, you'd have auth logic here.
-    // For the demo, we just navigate to the store.
-    navigate('/store');
+    try {
+      // Demo login: look up user by email and store their id in localStorage
+      const data = await api<{ id: string; username: string; email: string }>('/api/login-demo', {
+        method: 'POST',
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('crimson-user-id', data.id);
+        window.localStorage.setItem('crimson-username', data.username);
+        window.localStorage.setItem('crimson-email', data.email);
+      }
+      navigate('/store');
+    } catch (err) {
+      console.error(err);
+      // Fallback: still navigate so the user can see the app, but without a bound account
+      navigate('/store');
+    }
   };
   return (
     <AuthLayout>
@@ -25,7 +42,15 @@ export function LoginPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" placeholder="gamer@example.com" required className="bg-void-700 border-void-600 focus:ring-blood-500" />
+              <Input
+                id="email"
+                type="email"
+                placeholder="gamer@example.com"
+                required
+                className="bg-void-700 border-void-600 focus:ring-blood-500"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>

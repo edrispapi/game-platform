@@ -128,7 +128,12 @@ export function ChatPage() {
             </AvatarFallback>
         </Avatar>
           <div className="flex-1 min-w-0">
-            <h2 className="font-bold text-lg truncate">{friend.username}</h2>
+            <Link
+              to={`/user/${friend.username}`}
+              className="font-bold text-lg truncate hover:text-blood-400 transition-colors"
+            >
+              {friend.username}
+            </Link>
             <div className="flex items-center gap-2">
               <div className={`h-2 w-2 rounded-full ${
                 friend.status === 'Online' ? 'bg-green-400 animate-pulse' :

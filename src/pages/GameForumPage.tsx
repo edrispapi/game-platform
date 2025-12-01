@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { UserLink } from "@/components/UserLink";
+import { CommentReactions } from "@/components/CommentReactions";
 
 
 export function GameForumPage() {
@@ -154,7 +155,7 @@ export function GameForumPage() {
           className="mb-4 hover:bg-void-700"
           onClick={() => setSelectedPost(null)}
         >
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Forum
+            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Forum
         </Button>
 
         {/* Post Detail Card */}
@@ -202,7 +203,7 @@ export function GameForumPage() {
                   </div>
                   <div className="flex items-center gap-1">
                     <Eye className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
-                    <span>{selectedPost.views} views</span>
+                  <span>{selectedPost.views} views</span>
                   </div>
                 </div>
               </div>
@@ -223,7 +224,7 @@ export function GameForumPage() {
                   const wasLiked = selectedPost.isLiked;
                   const newLikes = wasLiked ? selectedPost.likes - 1 : selectedPost.likes + 1;
                   
-                  // Optimistic update
+                  // Optimistic update for list
                   queryClient.setQueryData(['forum-posts', slug], (old: any) => {
                     if (!old) return old;
                     return {
@@ -235,6 +236,13 @@ export function GameForumPage() {
                       ),
                     };
                   });
+
+                  // Optimistic update for selected post detail
+                  setSelectedPost(prev =>
+                    prev && prev.id === selectedPost.id
+                      ? { ...prev, isLiked: !wasLiked, likes: newLikes }
+                      : prev
+                  );
                   
                   api(`/api/forum/posts/${selectedPost.id}/like`, { method: 'POST' })
                     .then(() => {
@@ -254,6 +262,11 @@ export function GameForumPage() {
                           ),
                         };
                       });
+                      setSelectedPost(prev =>
+                        prev && prev.id === selectedPost.id
+                          ? { ...prev, isLiked: wasLiked, likes: selectedPost.likes }
+                          : prev
+                      );
                       toast.error('Failed to like post');
                     });
                 }}
@@ -266,6 +279,7 @@ export function GameForumPage() {
                 <span className="font-medium">{totalRepliesForSelectedPost} {totalRepliesForSelectedPost === 1 ? 'reply' : 'replies'}</span>
               </div>
             </div>
+            <CommentReactions compact className="mt-2" />
           </CardContent>
         </Card>
 
@@ -289,72 +303,28 @@ export function GameForumPage() {
                 <CardContent className="p-3 sm:p-5">
                   <div className="flex items-start gap-2 sm:gap-4">
                     <Avatar className="h-8 w-8 sm:h-10 sm:w-10 border-2 border-void-600 flex-shrink-0">
-                      <AvatarImage src={reply.authorAvatar} />
+                    <AvatarImage src={reply.authorAvatar} />
                       <AvatarFallback className="bg-void-700 text-white text-xs">
                         {reply.author.substring(0, 2).toUpperCase()}
                       </AvatarFallback>
-                    </Avatar>
+                  </Avatar>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2 flex-wrap">
                         <UserLink username={reply.author} className="font-bold text-white hover:text-blood-400 transition-colors text-sm sm:text-base">
-                          {reply.author}
-                        </UserLink>
+                        {reply.author}
+                      </UserLink>
                         <span className="text-xs text-gray-500 flex items-center gap-1">
                           <Clock className="h-3 w-3 shrink-0" />
                           {formatDistanceToNow(new Date(reply.createdAt), { addSuffix: true, includeSeconds: true })}
-                        </span>
-                      </div>
-                      <p className="text-gray-300 mb-2 sm:mb-3 leading-relaxed text-sm sm:text-base break-words">{reply.content}</p>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="gap-2 h-8 text-xs hover:bg-void-700"
-                          onClick={() => {
-                          const wasLiked = reply.isLiked;
-                          const newLikes = wasLiked ? reply.likes - 1 : reply.likes + 1;
-                          
-                          // Optimistic update
-                          queryClient.setQueryData(['forum-replies', selectedPost?.id], (old: any) => {
-                            if (!old) return old;
-                            return {
-                              ...old,
-                              items: old.items.map((r: ForumReply) => 
-                                r.id === reply.id 
-                                  ? { ...r, isLiked: !wasLiked, likes: newLikes }
-                                  : r
-                              ),
-                            };
-                          });
-                          
-                          api(`/api/forum/replies/${reply.id}/like`, { method: 'POST' })
-                            .then(() => {
-                              queryClient.invalidateQueries({ queryKey: ['forum-replies', selectedPost?.id] });
-                            })
-                            .catch(() => {
-                              // Revert on error
-                              queryClient.setQueryData(['forum-replies', selectedPost?.id], (old: any) => {
-                                if (!old) return old;
-                                return {
-                                  ...old,
-                                  items: old.items.map((r: ForumReply) => 
-                                    r.id === reply.id 
-                                      ? { ...r, isLiked: wasLiked, likes: reply.likes }
-                                      : r
-                                  ),
-                                };
-                              });
-                              toast.error('Failed to like reply');
-                            });
-                        }}
-                      >
-                        <ThumbsUp className={`h-3 w-3 ${reply.isLiked ? 'fill-current' : ''}`} /> 
-                        {reply.likes}
-                      </Button>
+                      </span>
                     </div>
+                      <p className="text-gray-300 mb-2 sm:mb-3 leading-relaxed text-sm sm:text-base break-words">{reply.content}</p>
+                    <CommentReactions compact />
                   </div>
-                </CardContent>
-              </Card>
-            ))
+                </div>
+              </CardContent>
+            </Card>
+          ))
           ) : (
             <Card className="bg-void-800 border-void-700 border-dashed">
               <CardContent className="p-12 text-center">
@@ -382,11 +352,11 @@ export function GameForumPage() {
               onChange={(e) => setNewReplyContent(e.target.value)}
             />
             <div className="flex justify-end">
-              <Button
-                onClick={() => createReplyMutation.mutate()}
-                disabled={!newReplyContent.trim() || createReplyMutation.isPending}
+            <Button
+              onClick={() => createReplyMutation.mutate()}
+              disabled={!newReplyContent.trim() || createReplyMutation.isPending}
                 className="bg-blood-500 hover:bg-blood-600 min-w-[120px]"
-              >
+            >
                 {createReplyMutation.isPending ? (
                   <>Posting...</>
                 ) : (
@@ -395,7 +365,7 @@ export function GameForumPage() {
                     Post Reply
                   </>
                 )}
-              </Button>
+            </Button>
             </div>
           </CardContent>
         </Card>
@@ -480,11 +450,11 @@ export function GameForumPage() {
           ) : filteredAndSortedPosts.length > 0 ? (
             <div className="space-y-4">
               {filteredAndSortedPosts.map(post => (
-                <Card
-                  key={post.id}
+            <Card
+              key={post.id}
                   className="bg-void-800 border-void-700 hover:border-blood-500/50 transition-all duration-200 cursor-pointer group shadow-sm hover:shadow-lg"
-                  onClick={() => setSelectedPost(post)}
-                >
+              onClick={() => setSelectedPost(post)}
+            >
                   <CardContent className="p-4 sm:p-6">
                     <div className="flex items-start gap-3 sm:gap-4">
                       <div className="flex-1 min-w-0">
@@ -495,7 +465,7 @@ export function GameForumPage() {
                               Pinned
                             </Badge>
                           )}
-                          {post.tags.map(tag => (
+                      {post.tags.map(tag => (
                             <Badge 
                               key={tag} 
                               variant="secondary" 
@@ -507,11 +477,11 @@ export function GameForumPage() {
                             >
                               {tag}
                             </Badge>
-                          ))}
-                        </div>
+                      ))}
+                    </div>
                         <h3 className="text-lg sm:text-xl font-bold mb-2 group-hover:text-blood-400 transition-colors line-clamp-2">
-                          {post.title}
-                        </h3>
+                      {post.title}
+                    </h3>
                         <p className="text-gray-400 mb-3 sm:mb-4 line-clamp-2 leading-relaxed text-sm sm:text-base">{post.content}</p>
                         <div className="flex items-center gap-3 sm:gap-6 text-xs sm:text-sm text-gray-500 flex-wrap">
                           <div className="flex items-center gap-1.5 sm:gap-2">
@@ -522,9 +492,9 @@ export function GameForumPage() {
                               </AvatarFallback>
                             </Avatar>
                             <UserLink username={post.author} className="hover:text-blood-400 transition-colors truncate">
-                              {post.author}
-                            </UserLink>
-                          </div>
+                          {post.author}
+                        </UserLink>
+                      </div>
                           <div className="flex items-center gap-1">
                             <Clock className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
                             <span className="whitespace-nowrap">{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true, includeSeconds: true })}</span>
@@ -540,14 +510,14 @@ export function GameForumPage() {
                           <div className="flex items-center gap-1">
                             <Eye className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
                             <span>{post.views}</span>
-                          </div>
-                        </div>
+                      </div>
+                      </div>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
               ))}
-            </div>
+                  </div>
           ) : (
             <Card className="bg-void-800 border-void-700 border-dashed">
               <CardContent className="p-12 text-center">
@@ -574,37 +544,37 @@ export function GameForumPage() {
             <CardContent className="space-y-6">
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-300">Post Title</label>
-                <Input
+              <Input
                   placeholder="Give your post a clear, descriptive title..."
                   className="bg-void-700 border-void-600 text-white placeholder:text-gray-500 focus:border-blood-500 focus:ring-blood-500"
-                  value={newPostTitle}
-                  onChange={(e) => setNewPostTitle(e.target.value)}
-                />
+                value={newPostTitle}
+                onChange={(e) => setNewPostTitle(e.target.value)}
+              />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-300">Content</label>
-                <Textarea
+              <Textarea
                   placeholder="Share your thoughts, questions, or ideas with the community..."
                   className="bg-void-700 border-void-600 min-h-[250px] text-white placeholder:text-gray-500 focus:border-blood-500 focus:ring-blood-500"
-                  value={newPostContent}
-                  onChange={(e) => setNewPostContent(e.target.value)}
-                />
+                value={newPostContent}
+                onChange={(e) => setNewPostContent(e.target.value)}
+              />
               </div>
               <div className="flex justify-end pt-4 border-t border-void-700">
-                <Button
-                  onClick={() => createPostMutation.mutate()}
-                  disabled={!newPostTitle.trim() || !newPostContent.trim() || createPostMutation.isPending}
+              <Button
+                onClick={() => createPostMutation.mutate()}
+                disabled={!newPostTitle.trim() || !newPostContent.trim() || createPostMutation.isPending}
                   className="bg-blood-500 hover:bg-blood-600 min-w-[140px]"
-                >
+              >
                   {createPostMutation.isPending ? (
                     <>Creating...</>
                   ) : (
                     <>
-                      <Plus className="mr-2 h-4 w-4" />
+                <Plus className="mr-2 h-4 w-4" />
                       Create Post
                     </>
                   )}
-                </Button>
+      </Button>
               </div>
             </CardContent>
           </Card>
@@ -670,7 +640,7 @@ export function GameForumPage() {
                   </CardContent>
                 </Card>
               ))}
-            </div>
+          </div>
           ) : (
             <Card className="bg-void-800 border-void-700 border-dashed">
               <CardContent className="p-12 text-center">

@@ -92,7 +92,7 @@ export function DashboardLayout(): JSX.Element {
                         </div>
                         <Badge className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center bg-green-500 text-white text-[10px] font-bold border-2 border-void-900 shadow-lg pointer-events-none">
                           {cartItemCount > 99 ? '99+' : cartItemCount}
-                        </Badge>
+                    </Badge>
                       </div>
                     </div>
                   )}
@@ -146,10 +146,10 @@ export function DashboardLayout(): JSX.Element {
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <div className="relative">
-                          <Avatar className="h-10 w-10 cursor-pointer border-2 border-transparent hover:border-blood-500">
+                        <Avatar className="h-10 w-10 cursor-pointer border-2 border-transparent hover:border-blood-500">
                               <AvatarImage src={profile?.avatar} alt={profile?.username || 'User'} />
                               <AvatarFallback>{(profile?.username || 'U').substring(0, 2).toUpperCase()}</AvatarFallback>
-                          </Avatar>
+                        </Avatar>
                           {profile && (
                             <div className={`absolute -bottom-1 -right-1 h-3 w-3 rounded-full border-2 border-void-900 ${
                               profile.status === 'Online' ? 'bg-green-500' : 

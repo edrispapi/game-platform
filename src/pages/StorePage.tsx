@@ -5,14 +5,14 @@ import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { Game, GameTag } from "@shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "framer-motion";
-import { ArrowRight, Search, Filter, SlidersHorizontal, Star, Calendar, Users } from "lucide-react";
+import { Search, Star, TrendingUp, Clock, DollarSign, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+
 const Section = ({ title, children }: { title: string, children: React.ReactNode }) => (
   <motion.section
     initial={{ opacity: 0, y: 20 }}
@@ -24,18 +24,19 @@ const Section = ({ title, children }: { title: string, children: React.ReactNode
     {children}
   </motion.section>
 );
+
 export function StorePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState<GameTag | 'all'>('all');
-  const [sortBy, setSortBy] = useState<'popular' | 'price-asc' | 'price-desc' | 'newest' | 'rating'>('popular');
-  const [priceRange, setPriceRange] = useState<[number]>([100]);
+  const [sortBy, setSortBy] = useState<'popular' | 'rating' | 'newest' | 'price-low' | 'price-high'>('popular');
+  const [maxPrice, setMaxPrice] = useState(100);
   
   const { data: gamesResponse, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['games'],
     queryFn: () => api<{ items: Game[] }>('/api/games'),
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000,
   });
   
   const allGames = gamesResponse?.items ?? [];
@@ -45,19 +46,17 @@ export function StorePage() {
       const matchesSearch = game.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         game.description.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesTag = selectedTag === 'all' || game.tags.includes(selectedTag);
-      const matchesPrice = game.price <= priceRange[0];
+      const matchesPrice = game.price <= maxPrice;
       return matchesSearch && matchesTag && matchesPrice;
     });
     
-    // Sort
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case 'price-asc':
+        case 'price-low':
           return a.price - b.price;
-        case 'price-desc':
+        case 'price-high':
           return b.price - a.price;
         case 'newest':
-          // Assuming games are ordered by creation (newest first in array)
           return allGames.indexOf(b) - allGames.indexOf(a);
         case 'rating':
           const aRating = a.reviews.length > 0 
@@ -69,17 +68,17 @@ export function StorePage() {
           return bRating - aRating;
         case 'popular':
         default:
-          // Sort by number of reviews (popularity indicator)
           return b.reviews.length - a.reviews.length;
       }
     });
     
     return filtered;
-  }, [allGames, searchQuery, selectedTag, sortBy, priceRange]);
+  }, [allGames, searchQuery, selectedTag, sortBy, maxPrice]);
   
   const featuredGames = allGames.slice(0, 3);
   const topSellers = [...allGames].sort((a, b) => b.price - a.price).slice(0, 5);
   const newReleases = [...allGames].reverse().slice(0, 5);
+  
   if (isError) {
     return (
       <div className="text-center py-20">
@@ -91,66 +90,133 @@ export function StorePage() {
       </div>
     );
   }
+  
   const allTags: GameTag[] = ['Action', 'RPG', 'Strategy', 'Indie', 'Shooter', 'Adventure'];
+  const hasActiveFilters = searchQuery || selectedTag !== 'all' || maxPrice < 100;
+  
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedTag('all');
+    setMaxPrice(100);
+    setSortBy('popular');
+  };
   
   return (
-    <div className="space-y-12 animate-fade-in">
-      {/* Filters and Search */}
-      <div className="bg-void-800 border border-void-700 rounded-lg p-6 space-y-4">
-        <div className="flex items-center gap-2 mb-4">
-          <SlidersHorizontal className="h-5 w-5 text-blood-500" />
-          <h3 className="font-orbitron text-xl font-bold text-blood-500">Filters & Sort</h3>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+    <div className="space-y-10 animate-fade-in">
+      {/* Clean Filter Bar */}
+      <div className="bg-void-800/80 backdrop-blur-sm border border-void-700/50 rounded-2xl p-4 sm:p-5 shadow-[0_0_40px_rgba(255,0,76,0.06)]">
+        <div className="flex flex-col xl:flex-row gap-4 xl:items-center xl:justify-between">
+          {/* Search */}
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
             <Input
               placeholder="Search games..."
-              className="pl-10 bg-void-700 border-void-600"
+              className="pl-9 h-10 bg-void-900/50 border-void-600 text-sm"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <Select value={selectedTag} onValueChange={(v) => setSelectedTag(v as GameTag | 'all')}>
-            <SelectTrigger className="bg-void-700 border-void-600">
-              <SelectValue placeholder="All Tags" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Tags</SelectItem>
-              {allTags.map(tag => (
-                <SelectItem key={tag} value={tag}>{tag}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
-            <SelectTrigger className="bg-void-700 border-void-600">
-              <SelectValue placeholder="Sort by" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="popular">Most Popular</SelectItem>
-              <SelectItem value="rating">Highest Rated</SelectItem>
-              <SelectItem value="newest">Newest First</SelectItem>
-              <SelectItem value="price-asc">Price: Low to High</SelectItem>
-              <SelectItem value="price-desc">Price: High to Low</SelectItem>
-            </SelectContent>
-          </Select>
-          <div className="space-y-2">
-            <label className="text-sm text-gray-400">Max Price: ${priceRange[0]}</label>
+          
+          {/* Genre Pills */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setSelectedTag('all')}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-xs font-medium transition-all",
+                selectedTag === 'all'
+                  ? "bg-blood-500 text-white"
+                  : "bg-void-700/50 text-gray-400 hover:text-white hover:bg-void-600"
+              )}
+            >
+              All
+            </button>
+            {allTags.map(tag => (
+              <button
+                key={tag}
+                onClick={() => setSelectedTag(tag)}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-xs font-medium transition-all",
+                  selectedTag === tag
+                    ? "bg-blood-500 text-white"
+                    : "bg-void-700/50 text-gray-400 hover:text-white hover:bg-void-600"
+                )}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+          
+          {/* Sort Buttons */}
+          <div className="flex flex-wrap items-center gap-1 bg-void-900/50 rounded-lg p-1">
+            <button
+              onClick={() => setSortBy('popular')}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                sortBy === 'popular' ? "bg-blood-500/20 text-blood-400" : "text-gray-400 hover:text-white"
+              )}
+            >
+              <TrendingUp className="h-3.5 w-3.5" /> Popular
+            </button>
+            <button
+              onClick={() => setSortBy('rating')}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                sortBy === 'rating' ? "bg-blood-500/20 text-blood-400" : "text-gray-400 hover:text-white"
+              )}
+            >
+              <Star className="h-3.5 w-3.5" /> Top Rated
+            </button>
+            <button
+              onClick={() => setSortBy('newest')}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                sortBy === 'newest' ? "bg-blood-500/20 text-blood-400" : "text-gray-400 hover:text-white"
+              )}
+            >
+              <Clock className="h-3.5 w-3.5" /> New
+            </button>
+            <button
+              onClick={() => setSortBy('price-low')}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                sortBy === 'price-low' ? "bg-blood-500/20 text-blood-400" : "text-gray-400 hover:text-white"
+              )}
+            >
+              <DollarSign className="h-3.5 w-3.5" /> Low
+            </button>
+          </div>
+          
+          {/* Price Slider */}
+          <div className="flex items-center gap-2 min-w-[140px]">
+            <span className="text-xs text-gray-500">Max:</span>
             <input
               type="range"
               min="0"
               max="100"
               step="5"
-              value={priceRange[0]}
-              onChange={(e) => setPriceRange([Number(e.target.value)])}
-              className="w-full"
+              value={maxPrice}
+              onChange={(e) => setMaxPrice(Number(e.target.value))}
+              className="flex-1 h-1.5 bg-void-600 rounded-full appearance-none cursor-pointer accent-blood-500"
             />
+            <span className="text-xs font-mono text-gray-400 w-8">${maxPrice}</span>
           </div>
+          
+          {/* Clear Filters */}
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-400 hover:text-white transition-colors self-start xl:self-auto"
+            >
+              <X className="h-3.5 w-3.5" /> Clear
+            </button>
+          )}
         </div>
+        
+        {/* Results count */}
         {filteredAndSortedGames.length !== allGames.length && (
-          <div className="text-sm text-gray-400">
+          <p className="text-xs text-gray-500 mt-3 pt-3 border-t border-void-700/50">
             Showing {filteredAndSortedGames.length} of {allGames.length} games
-          </div>
+          </p>
         )}
       </div>
       
@@ -185,6 +251,7 @@ export function StorePage() {
           </div>
         )}
       </Section>
+      
       <Section title="Top Sellers">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
           {isLoading ? (
@@ -198,6 +265,7 @@ export function StorePage() {
           )}
         </div>
       </Section>
+      
       <Section title="New Releases">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
           {isLoading ? (
@@ -211,6 +279,7 @@ export function StorePage() {
           )}
         </div>
       </Section>
+      
       <Section title="All Games">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
           {isLoading ? (
