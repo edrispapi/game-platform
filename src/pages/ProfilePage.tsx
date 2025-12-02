@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Clock, Trophy, Users, X, Gamepad2 } from "lucide-react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api-client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, authApi, gamesApi, shoppingApi, getCurrentUserId } from "@/lib/api-client";
 import { Game, UserProfile, Order, Friend } from "@shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GameCard } from "@/components/GameCard";
@@ -67,13 +67,35 @@ function OrderHistory() {
 }
 
 export function ProfilePage() {
+  const queryClient = useQueryClient();
   const [hoursDialogOpen, setHoursDialogOpen] = useState(false);
   const [friendsDialogOpen, setFriendsDialogOpen] = useState(false);
   const [avatarDialogOpen, setAvatarDialogOpen] = useState(false);
   
+  // Fetch profile from FastAPI
   const { data: profile, isLoading: isLoadingProfile, isError: isProfileError } = useQuery<UserProfile>({
     queryKey: ['profile'],
-    queryFn: () => api('/api/profile'),
+    queryFn: async () => {
+      const user = await authApi.me();
+      return {
+        id: String(user.id),
+        username: user.username,
+        bio: user.bio || '',
+        avatar: '/images/avatars/default.svg',
+        email: user.email,
+        status: 'Online' as const,
+        hoursPlayed: 0,
+        achievementsCount: 0,
+        friendsCount: 0,
+        favoriteGames: [],
+        settings: {
+          profilePublic: true,
+          emailNotifications: true,
+          hideOnlineStatus: false,
+          twoFactorEnabled: false,
+        },
+      };
+    },
   });
   
   const { data: hoursDetails, isLoading: isLoadingHours } = useQuery({

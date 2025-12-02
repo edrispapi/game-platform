@@ -6,31 +6,47 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Link, useNavigate } from "react-router-dom";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import React, { useState } from "react";
-import { api } from "@/lib/api-client";
+import { authApi, setAuthToken, setCurrentUserId } from "@/lib/api-client";
+import { Loader2 } from "lucide-react";
+
 export function LoginPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+    
     try {
-      // Demo login: look up user by email and store their id in localStorage
-      const data = await api<{ id: string; username: string; email: string }>('/api/login-demo', {
-        method: 'POST',
-        body: JSON.stringify({ email: email.trim() }),
+      // Login via FastAPI
+      const response = await authApi.login({
+        username_or_email: email.trim(),
+        password: password,
+        remember_me: true,
       });
+      
+      // Store auth token and user info
+      setAuthToken(response.access_token);
+      setCurrentUserId(String(response.user.id));
+      
       if (typeof window !== 'undefined') {
-        window.localStorage.setItem('crimson-user-id', data.id);
-        window.localStorage.setItem('crimson-username', data.username);
-        window.localStorage.setItem('crimson-email', data.email);
+        window.localStorage.setItem('crimson-username', response.user.username);
+        window.localStorage.setItem('crimson-email', response.user.email);
       }
+      
       navigate('/store');
     } catch (err) {
-      console.error(err);
-      // Fallback: still navigate so the user can see the app, but without a bound account
-      navigate('/store');
+      console.error('Login error:', err);
+      setError((err as Error).message || 'Login failed. Please check your credentials.');
+    } finally {
+      setIsLoading(false);
     }
   };
+  
   return (
     <AuthLayout>
       <Card className="bg-void-800/80 border-void-700 backdrop-blur-sm">
@@ -40,25 +56,53 @@ export function LoginPage() {
         </CardHeader>
         <form onSubmit={handleLogin}>
           <CardContent className="space-y-4">
+            {error && (
+              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                {error}
+              </div>
+            )}
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Email or Username</Label>
               <Input
                 id="email"
-                type="email"
+                type="text"
                 placeholder="gamer@example.com"
                 required
                 className="bg-void-700 border-void-600 focus:ring-blood-500"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                disabled={isLoading}
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" placeholder="********" required className="bg-void-700 border-void-600 focus:ring-blood-500" />
+              <Input
+                id="password"
+                type="password"
+                placeholder="********"
+                required
+                className="bg-void-700 border-void-600 focus:ring-blood-500"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={isLoading}
+              />
             </div>
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">
-            <Button type="submit" className="w-full bg-blood-500 hover:bg-blood-600 text-lg font-bold shadow-blood-glow">Login</Button>
+            <Button
+              type="submit"
+              className="w-full bg-blood-500 hover:bg-blood-600 text-lg font-bold shadow-blood-glow"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Logging in...
+                </>
+              ) : (
+                'Login'
+              )}
+            </Button>
             <div className="relative w-full">
               <div className="absolute inset-0 flex items-center">
                 <span className="w-full border-t border-void-600" />
@@ -68,9 +112,9 @@ export function LoginPage() {
               </div>
             </div>
             <div className="grid grid-cols-3 gap-2 w-full">
-              <Button variant="outline" className="border-void-600 hover:bg-void-700">Google</Button>
-              <Button variant="outline" className="border-void-600 hover:bg-void-700">Discord</Button>
-              <Button variant="outline" className="border-void-600 hover:bg-void-700">Steam</Button>
+              <Button variant="outline" className="border-void-600 hover:bg-void-700" type="button">Google</Button>
+              <Button variant="outline" className="border-void-600 hover:bg-void-700" type="button">Discord</Button>
+              <Button variant="outline" className="border-void-600 hover:bg-void-700" type="button">Steam</Button>
             </div>
             <p className="text-sm text-gray-400 text-center">
               Don't have an account? <Link to="/register" className="font-semibold text-blood-500 hover:underline">Sign up</Link>
