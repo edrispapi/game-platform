@@ -1,83 +1,137 @@
-# Crimson Grid: The Ultimate Gaming Nexus
+# Crimson Grid - Gaming Platform Frontend
 
-Crimson Grid is a sophisticated, feature-rich digital platform designed to be the central hub for gamers. It combines a digital game storefront, a personal game library, and comprehensive social features into a single, visually stunning interface. The platform is built with a 'Crimson Void' aesthetic, featuring a dark, tech-noir theme with striking crimson accents, creating an immersive and modern gaming environment.
+A modern React frontend for the Crimson Grid gaming platform, designed to work with the FastAPI microservices backend.
 
-## Key Features
+## 🎮 Features
 
--   **Digital Storefront**: Discover, browse, and purchase games in a dynamic marketplace featuring carousels, search, and detailed game pages.
--   **Personal Game Library**: Manage your collection of owned games, track playtime, and get quick-launch access.
--   **Comprehensive Social Hub**: A complete social system with friends lists, real-time chat, and notifications to foster community interaction.
--   **Customizable User Profiles**: Showcase your achievements, game statistics, and friends with a personalized profile.
--   **Stunning 'Crimson Void' Aesthetic**: A modern, dark, tech-noir theme with glowing crimson accents for an immersive experience.
--   **Secure Authentication**: Visually engaging login and registration pages with particle effects.
+- **Digital Storefront**: Browse, search, and purchase games
+- **Personal Game Library**: Manage your game collection
+- **Social Hub**: Friends, chat, and notifications
+- **User Profiles**: Customizable profiles with achievements
+- **Workshop**: Community mods and content
+- **Forums**: Game-specific discussions
+- **Reviews**: Rate and review games
 
-## Technology Stack
+## 🛠 Tech Stack
 
--   **Frontend**: React, Vite, React Router, Tailwind CSS
--   **UI Components**: shadcn/ui, Lucide React
--   **State Management**: Zustand, TanStack React Query
--   **Animations**: Framer Motion
--   **Backend**: Cloudflare Workers, Hono
--   **Database**: Cloudflare D1 (via Durable Objects)
--   **Language**: TypeScript
+- **React 18** with TypeScript
+- **Vite** for fast development and building
+- **TailwindCSS** for styling
+- **Radix UI** for accessible components
+- **TanStack Query** for data fetching
+- **Zustand** for state management
+- **Framer Motion** for animations
 
-## Getting Started
-
-Follow these instructions to get a local copy of the project up and running for development and testing purposes.
+## 🚀 Getting Started
 
 ### Prerequisites
 
--   [Bun](https://bun.sh/) installed on your machine.
--   [Git](https://git-scm.com/) for version control.
--   A Cloudflare account and the `wrangler` CLI installed and configured.
+- Node.js 18+ or Bun
+- The FastAPI backend running (see `/home/user5/Game_platform`)
 
 ### Installation
 
-1.  **Clone the repository:**
-    ```bash
-    git clone <repository-url>
-    cd crimson-grid
-    ```
-
-2.  **Install dependencies:**
-    This project uses Bun as the package manager.
-    ```bash
-    bun install
-    ```
-
-3.  **Run the development server:**
-    This command starts the Vite frontend development server and the Hono backend worker simultaneously.
-    ```bash
-    bun dev
-    ```
-    The application will be available at `http://localhost:3000`.
-
-## Project Structure
-
-The project is organized into three main directories:
-
--   `src/`: Contains the frontend React application, including pages, components, hooks, and utility functions.
--   `worker/`: Contains the API routes written with Hono plus database helpers shared by the local server.
--   `shared/`: Contains shared types and data structures used by both the frontend and the backend to ensure type safety.
-
-## Development
-
-### Frontend
-
-The frontend is a standard React (Vite) application. You can create new pages in `src/pages` and components in `src/components`. Communication with the backend is handled through the API client located at `src/lib/api-client.ts`.
-
-### Backend
-
-The backend now runs as a Bun-powered server (`server/index.ts`) that mounts the Hono routes defined in `worker/user-routes.ts`. All persistence goes through PostgreSQL via the helpers in `worker/db`. Set `DATABASE_URL` (and optionally `DATABASE_API_KEY` / `DEFAULT_USER_ID`) before starting the API server.
-
-To run the API locally:
-
 ```bash
-bun run api
+# Install dependencies
+npm install
+# or
+bun install
 ```
 
-To add a new API endpoint simply update `worker/user-routes.ts` and, if necessary, add supporting queries inside `worker/db`.
+### Development
 
-## Deployment
+```bash
+# Start the development server
+npm run dev
+# or
+bun dev
+```
 
-Build the frontend with `bun run build` and host the generated `dist/` directory with your preferred static host. Run the Bun API server (`bun run api`) alongside it on your infrastructure of choice (Docker, systemd service, etc.). Ensure the API server has network access to your PostgreSQL instance.
+The frontend will be available at `http://localhost:3000`.
+
+### Environment Variables
+
+Create a `.env` file in the project root:
+
+```env
+# FastAPI Gateway URL
+VITE_API_BASE_URL=http://localhost:13000
+```
+
+For local development without Docker:
+```env
+VITE_API_BASE_URL=http://localhost:8000
+```
+
+### Build for Production
+
+```bash
+npm run build
+# or
+bun run build
+```
+
+The built files will be in the `dist/` directory.
+
+## 🔗 Backend Integration
+
+This frontend connects to the FastAPI microservices backend located at `/home/user5/Game_platform`.
+
+### Starting the Backend
+
+```bash
+cd /home/user5/Game_platform
+docker compose up --build
+```
+
+This starts:
+- **API Gateway**: http://localhost:13000
+- **PostgreSQL**: localhost:15432
+- **MongoDB**: localhost:27017
+- **Redis**: localhost:6379
+- **MinIO**: http://localhost:9000 (console: http://localhost:9001)
+
+### API Endpoints
+
+All API calls go through the gateway at `/api/v1/`:
+
+| Service | Endpoint Prefix |
+|---------|-----------------|
+| Users | `/api/v1/users` |
+| Games | `/api/v1/catalog` |
+| Reviews | `/api/v1/reviews` |
+| Shopping | `/api/v1/shopping` |
+| Friends | `/api/v1/friends` |
+| Social | `/api/v1/social` |
+| Notifications | `/api/v1/notifications` |
+| Achievements | `/api/v1/achievements` |
+| Workshop | `/api/v1/workshop` |
+| Online Status | `/api/v1/online` |
+| Recommendations | `/api/v1/recommendations` |
+
+## 📁 Project Structure
+
+```
+game-platform/
+├── src/
+│   ├── components/     # Reusable UI components
+│   ├── pages/          # Page components
+│   ├── hooks/          # Custom React hooks
+│   ├── lib/            # Utilities and API client
+│   └── stores/         # Zustand stores
+├── public/             # Static assets
+├── shared/             # Shared TypeScript types
+└── database/           # Database schema (reference only)
+```
+
+## 🎨 Design System
+
+The UI uses the "Crimson Void" aesthetic:
+- Dark theme with crimson (#DC2626) accents
+- Glassmorphism effects
+- Smooth animations
+- Responsive design
+
+## 📝 License
+
+Private project - All rights reserved.
