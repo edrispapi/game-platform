@@ -1,0 +1,399 @@
+x-minio-env: &minio-env
+  FILE_STORAGE_ENDPOINT: http://minio:9000
+  FILE_STORAGE_ACCESS_KEY: minio
+  FILE_STORAGE_SECRET_KEY: minio123
+  FILE_STORAGE_BUCKET: game-downloads
+  FILE_STORAGE_REGION: us-east-1
+
+services:
+  # ============================================================================
+  # Infrastructure Services
+  # ============================================================================
+  
+  mongo:
+    image: mongo:6
+    container_name: crimson-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - crimson-net
+
+  postgres:
+    image: postgres:15
+    container_name: crimson-postgres
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: crimson
+      POSTGRES_PASSWORD: crimson123
+    ports:
+      - "15432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crimson -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - crimson-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: crimson-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - crimson-net
+
+  minio:
+    image: minio/minio:latest
+    container_name: crimson-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - crimson-net
+
+  # ============================================================================
+  # Backend Microservices
+  # ============================================================================
+
+  user-service:
+    build:
+      context: ./backend/services/user-service
+    container_name: crimson-user-service
+    environment:
+      <<: *minio-env
+      USER_DATABASE_URL: postgresql://crimson:crimson123@postgres:5432/user_service
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "13001:8001"
+    networks:
+      - crimson-net
+
+  game-catalog-service:
+    build:
+      context: ./backend/services/game-catalog-service
+    container_name: crimson-game-catalog-service
+    environment:
+      <<: *minio-env
+      GAME_CATALOG_DATABASE_URL: postgresql://crimson:crimson123@postgres:5432/game_catalog_service
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "13002:8002"
+    networks:
+      - crimson-net
+
+  review-service:
+    build:
+      context: ./backend/services/review-service
+    container_name: crimson-review-service
+    environment:
+      <<: *minio-env
+      REVIEW_DATABASE_URL: postgresql://crimson:crimson123@postgres:5432/review_service
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "13003:8003"
+    networks:
+      - crimson-net
+
+  shopping-service:
+    build:
+      context: ./backend/services/shopping-service
+    container_name: crimson-shopping-service
+    environment:
+      <<: *minio-env
+      SHOPPING_DATABASE_URL: postgresql://crimson:crimson123@postgres:5432/shopping_service
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "13004:8004"
+    networks:
+      - crimson-net
+
+  purchase-service:
+    build:
+      context: ./backend/services/purchase-service
+    container_name: crimson-purchase-service
+    environment:
+      <<: *minio-env
+      PURCHASE_DATABASE_URL: postgresql://crimson:crimson123@postgres:5432/purchase_service
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "13005:8005"
+    networks:
+      - crimson-net
+
+  payment-service:
+    build:
+      context: ./backend/services/payment-service
+    container_name: crimson-payment-service
+    environment:
+      <<: *minio-env
+      PAYMENT_DATABASE_URL: postgresql://crimson:crimson123@postgres:5432/payment_service
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "13006:8006"
+    networks:
+      - crimson-net
+
+  online-service:
+    build:
+      context: ./backend/services/online-service
+    container_name: crimson-online-service
+    environment:
+      <<: *minio-env
+      ONLINE_DATABASE_URL: postgresql://crimson:crimson123@postgres:5432/online_service
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "13007:8007"
+    networks:
+      - crimson-net
+
+  social-service:
+    build:
+      context: ./backend/services/social-service
+    container_name: crimson-social-service
+    environment:
+      <<: *minio-env
+      SOCIAL_DATABASE_URL: postgresql://crimson:crimson123@postgres:5432/social_service
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "13008:8008"
+    networks:
+      - crimson-net
+
+  notification-service:
+    build:
+      context: ./backend/services/notification-service
+    container_name: crimson-notification-service
+    environment:
+      <<: *minio-env
+      NOTIFICATION_DATABASE_URL: postgresql://crimson:crimson123@postgres:5432/notification_service
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "13009:8009"
+    networks:
+      - crimson-net
+
+  recommendation-service:
+    build:
+      context: ./backend/services/recommendation-service
+    container_name: crimson-recommendation-service
+    environment:
+      <<: *minio-env
+      RECOMMENDATION_DATABASE_URL: postgresql://crimson:crimson123@postgres:5432/recommendation_service
+      RECOMMENDATION_MODEL_PATH: /models/recommendation/cf.pkl
+      CF_N_COMPONENTS: 40
+      CF_MIN_INTERACTIONS: 5
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "13010:8010"
+    networks:
+      - crimson-net
+    volumes:
+      - recommendation-models:/models/recommendation
+
+  workshop-service:
+    build:
+      context: ./backend/services/workshop-service
+    container_name: crimson-workshop-service
+    environment:
+      <<: *minio-env
+      WORKSHOP_DATABASE_URL: postgresql://crimson:crimson123@postgres:5432/workshop_service
+      WORKSHOP_STORAGE_PATH: /data/workshop_uploads
+      WORKSHOP_MAX_FILE_MB: 500
+      SECRET_KEY: 359919ea6e72b1e135c192f503cbc752f3eb09aa3109b9136b30ffffa6f5152a
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "13014:8014"
+    networks:
+      - crimson-net
+    volumes:
+      - workshop-storage:/data/workshop_uploads
+
+  forum-service:
+    build:
+      context: ./backend/services/forum-service
+    container_name: crimson-forum-service
+    environment:
+      <<: *minio-env
+      FORUM_DATABASE_URL: postgresql://crimson:crimson123@postgres:5432/forum_service
+      SECRET_KEY: 359919ea6e72b1e135c192f503cbc752f3eb09aa3109b9136b30ffffa6f5152a
+      JWT_ALGORITHM: HS256
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "13015:8015"
+    networks:
+      - crimson-net
+
+  achievement-service:
+    build:
+      context: ./backend/services/achievement-service
+    container_name: crimson-achievement-service
+    environment:
+      <<: *minio-env
+      ACHIEVEMENT_DATABASE_URL: postgresql://crimson:crimson123@postgres:5432/achievement_service
+      ACHIEVEMENT_REDIS_URL: redis://redis:6379/1
+      NOTIFICATION_SERVICE_URL: http://notification-service:8009
+      USER_SERVICE_URL: http://user-service:8001
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "13011:8011"
+    networks:
+      - crimson-net
+
+  monitoring-service:
+    build:
+      context: ./backend/services/monitoring-service
+    container_name: crimson-monitoring-service
+    environment:
+      <<: *minio-env
+      MONITORING_DATABASE_URL: postgresql://crimson:crimson123@postgres:5432/monitoring_service
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "13012:8012"
+    networks:
+      - crimson-net
+
+  friends-chat-service:
+    build:
+      context: ./backend/services/friends-chat-service
+    container_name: crimson-friends-chat-service
+    environment:
+      PROJECT_NAME: Friends & Chat
+      SECRET_KEY: crimson-secret-key-change-in-production
+      JWT_ALGORITHM: HS256
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
+      MONGO_URL: mongodb://mongo:27017
+      MONGO_DB: friends_chat
+      FRIENDS_CHAT_SERVICE_PORT: 8013
+    depends_on:
+      mongo:
+        condition: service_started
+    ports:
+      - "13013:8013"
+    networks:
+      - crimson-net
+
+  # ============================================================================
+  # API Gateway
+  # ============================================================================
+
+  api-gateway:
+    build:
+      context: ./backend/services/api-gateway
+    container_name: crimson-api-gateway
+    environment:
+      <<: *minio-env
+      USER_SERVICE_URL: http://user-service:8001
+      GAME_CATALOG_SERVICE_URL: http://game-catalog-service:8002
+      REVIEW_SERVICE_URL: http://review-service:8003
+      SHOPPING_SERVICE_URL: http://shopping-service:8004
+      PURCHASE_SERVICE_URL: http://purchase-service:8005
+      PAYMENT_SERVICE_URL: http://payment-service:8006
+      ONLINE_SERVICE_URL: http://online-service:8007
+      SOCIAL_SERVICE_URL: http://social-service:8008
+      NOTIFICATION_SERVICE_URL: http://notification-service:8009
+      RECOMMENDATION_SERVICE_URL: http://recommendation-service:8010
+      ACHIEVEMENT_SERVICE_URL: http://achievement-service:8011
+      WORKSHOP_SERVICE_URL: http://workshop-service:8014
+      FORUM_SERVICE_URL: http://forum-service:8015
+      FRIENDS_CHAT_SERVICE_URL: http://friends-chat-service:8013
+      REDIS_URL: redis://redis:6379/0
+      ALLOWED_ORIGINS: http://localhost:3000,http://frontend:3000
+    depends_on:
+      redis:
+        condition: service_started
+      user-service:
+        condition: service_started
+      game-catalog-service:
+        condition: service_started
+      review-service:
+        condition: service_started
+      shopping-service:
+        condition: service_started
+      purchase-service:
+        condition: service_started
+      payment-service:
+        condition: service_started
+      online-service:
+        condition: service_started
+      social-service:
+        condition: service_started
+      notification-service:
+        condition: service_started
+      recommendation-service:
+        condition: service_started
+      achievement-service:
+        condition: service_started
+      monitoring-service:
+        condition: service_started
+    ports:
+      - "13000:8000"
+    networks:
+      - crimson-net
+
+volumes:
+  postgres-data:
+  minio-data:
+  mongo-data:
+  recommendation-models:
+  workshop-storage:
+
+networks:
+  crimson-net:
+    driver: bridge
+

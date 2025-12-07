@@ -7,22 +7,22 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Link, useNavigate } from "react-router-dom";
 import { AuthLayout } from "@/components/layout/AuthLayout";
 import { useMutation } from "@tanstack/react-query";
-import { api } from "@/lib/api-client";
+import { authApi } from "@/lib/api-client";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
+
 export function RegisterPage() {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   
   const registerMutation = useMutation({
     mutationFn: (data: { username: string; email: string; password: string }) => 
-      api('/api/register', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
+      authApi.register(data),
     onSuccess: () => {
-      toast.success('Account created successfully!');
+      toast.success('Account created successfully! Please log in.');
       navigate('/login');
     },
     onError: (error: Error) => {
@@ -36,8 +36,21 @@ export function RegisterPage() {
       toast.error('Please fill in all fields');
       return;
     }
-    registerMutation.mutate({ username: username.trim(), email: email.trim(), password });
+    if (password !== confirmPassword) {
+      toast.error('Passwords do not match');
+      return;
+    }
+    if (password.length < 8) {
+      toast.error('Password must be at least 8 characters');
+      return;
+    }
+    registerMutation.mutate({ 
+      username: username.trim(), 
+      email: email.trim(), 
+      password 
+    });
   };
+  
   return (
     <AuthLayout>
       <Card className="bg-void-800/80 border-void-700 backdrop-blur-sm">
@@ -53,9 +66,12 @@ export function RegisterPage() {
                 id="username" 
                 placeholder="YourGamerTag" 
                 required 
+                minLength={3}
+                maxLength={50}
                 className="bg-void-700 border-void-600 focus:ring-blood-500"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                disabled={registerMutation.isPending}
               />
             </div>
             <div className="space-y-2">
@@ -68,6 +84,7 @@ export function RegisterPage() {
                 className="bg-void-700 border-void-600 focus:ring-blood-500"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                disabled={registerMutation.isPending}
               />
             </div>
             <div className="space-y-2">
@@ -81,8 +98,23 @@ export function RegisterPage() {
                 className="bg-void-700 border-void-600 focus:ring-blood-500"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                disabled={registerMutation.isPending}
               />
               <p className="text-xs text-gray-500">Must be at least 8 characters</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <Input 
+                id="confirmPassword" 
+                type="password" 
+                placeholder="********" 
+                required 
+                minLength={8}
+                className="bg-void-700 border-void-600 focus:ring-blood-500"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                disabled={registerMutation.isPending}
+              />
             </div>
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">
@@ -91,7 +123,14 @@ export function RegisterPage() {
               className="w-full bg-blood-500 hover:bg-blood-600 text-lg font-bold shadow-blood-glow"
               disabled={registerMutation.isPending}
             >
-              {registerMutation.isPending ? 'Creating Account...' : 'Sign Up'}
+              {registerMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating Account...
+                </>
+              ) : (
+                'Sign Up'
+              )}
             </Button>
             <p className="text-sm text-gray-400 text-center">
               Already have an account? <Link to="/login" className="font-semibold text-blood-500 hover:underline">Log in</Link>

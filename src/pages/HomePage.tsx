@@ -4,16 +4,24 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { motion } from "framer-motion";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api-client";
-import { Game } from "@shared/types";
-import { Skeleton } from "@/components/ui/skeleton";
 export function HomePage() {
-  const { data: gamesResponse, isLoading } = useQuery({
-    queryKey: ['games'],
-    queryFn: () => api<{ items: Game[] }>('/api/games'),
-  });
-  const featuredGames = gamesResponse?.items.slice(0, 3) ?? [];
+  const banners = [
+    {
+      title: "Gaming Live Streaming",
+      href: "/store",
+      image: "https://cdn.imgurl.ir/uploads/v04731_Gemini_Generated_Image_wdmrauwdmrauwdmr.webp",
+    },
+    {
+      title: "God of War: Ragnarök",
+      href: "/game/god-of-war-ragnarok",
+      image: "https://cdn.imgurl.ir/uploads/u539789_Gemini_Generated_Image_da9u73da9u73da9u.webp",
+    },
+    {
+      title: "Call of Duty: Modern Warfare",
+      href: "/game/call-of-duty-modern-warfare",
+      image: "https://cdn.imgurl.ir/uploads/l02484_Gemini_Generated_Image_fsbrlyfsbrlyfsbr_1.webp",
+    },
+  ];
   return (
     <div className="min-h-screen bg-void-950 text-white overflow-x-hidden">
       {/* Hero Section */}
@@ -64,18 +72,23 @@ export function HomePage() {
                 <CardTitle className="text-4xl font-orbitron text-blood-500 text-center">Featured Games</CardTitle>
               </CardHeader>
               <CardContent>
-                {isLoading ? (
-                  <Skeleton className="w-full aspect-video rounded-lg" />
-                ) : (
                 <Carousel opts={{ loop: true }} className="w-full max-w-5xl mx-auto">
                   <CarouselContent>
-                    {featuredGames.map((game) => (
-                      <CarouselItem key={game.id}>
-                        <Link to={`/game/${game.slug}`}>
-                          <div className="aspect-video relative rounded-lg overflow-hidden">
-                            <img src={game.bannerImage} alt={game.title} className="w-full h-full object-cover" />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-                            <h3 className="absolute bottom-4 left-4 font-orbitron text-3xl font-bold">{game.title}</h3>
+                    {banners.map((banner) => (
+                      <CarouselItem key={banner.href}>
+                        <Link to={banner.href}>
+                          <div className="aspect-[16/9] relative rounded-lg overflow-hidden shadow-2xl">
+                            <img
+                              src={banner.image}
+                              alt={banner.title}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
+                            <h3 className="absolute bottom-4 left-4 font-orbitron text-3xl font-bold drop-shadow-md">
+                              {banner.title}
+                            </h3>
                           </div>
                         </Link>
                       </CarouselItem>
@@ -84,7 +97,6 @@ export function HomePage() {
                   <CarouselPrevious className="left-[-50px]" />
                   <CarouselNext className="right-[-50px]" />
                 </Carousel>
-                )}
               </CardContent>
             </Card>
           </motion.div>
@@ -108,7 +120,6 @@ export function HomePage() {
         </div>
       </section>
       <footer className="bg-void-900 py-6 text-center text-gray-500">
-        <p>Built with ❤️ at Cloudflare</p>
       </footer>
     </div>
   );

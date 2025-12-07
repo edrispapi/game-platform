@@ -1,29 +1,56 @@
 'use client';
 import { GameCard } from "@/components/GameCard";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api-client";
-import { Game, GameTag } from "@shared/types";
+import { gamesApi, shoppingApi, getCurrentUserId } from "@/lib/api-client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { Gamepad2, Clock } from "lucide-react";
+import { Clock, Heart } from "lucide-react";
 import { UserHoursByGenre } from "@shared/types";
+function mapApiGameToLibraryGame(game: any) {
+  return {
+    id: String(game.id),
+    slug: game.slug || game.title?.toLowerCase().replace(/\s+/g, "-") || "",
+    title: game.title || "Untitled Game",
+    description: game.description || game.short_description || "",
+    price: game.price || 0,
+    coverImage: game.cover_image_url || game.banner_image_url || "/images/default-cover.svg",
+    bannerImage: game.banner_image_url || game.cover_image_url || "/images/default-banner.svg",
+    tags: Array.isArray(game.tags) ? game.tags : [],
+    reviews: [],
+    developer: game.developer,
+    publisher: game.publisher,
+    releaseDate: game.release_date,
+  };
+}
+
 export function LibraryPage() {
+  const userId = getCurrentUserId();
   const { data: gamesResponse, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['games'],
-    queryFn: () => api<{ items: Game[] }>('/api/games'),
+    queryKey: ['library-games'],
+    queryFn: () => gamesApi.search({}, 1, 100),
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
     staleTime: 5 * 60 * 1000,
   });
-  const { data: hoursResponse } = useQuery({
-    queryKey: ['hours-by-genre'],
-    queryFn: () => api<{ items: UserHoursByGenre[] }>('/api/profile/hours-by-genre'),
+  const { data: wishlists, isLoading: isLoadingWishlist } = useQuery({
+    queryKey: ['wishlists', userId],
+    queryFn: async () => {
+      if (!userId) return [];
+      return shoppingApi.getWishlists(userId);
+    },
+    enabled: !!userId,
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
   });
-  const userLibrary = gamesResponse?.items ?? [];
-  const hoursByGenre = hoursResponse?.items ?? [];
+  // TODO: wire to FastAPI hours-by-genre endpoint when available
+  const hoursByGenre: UserHoursByGenre[] = [];
+
+  const userLibrary = (gamesResponse?.games ?? []).map(mapApiGameToLibraryGame);
   const totalHours = hoursByGenre.reduce((sum, item) => sum + item.hours, 0);
+  const wishlistItems = (wishlists?.[0]?.items ?? []) as any[];
+  const wishlistCount = Array.isArray(wishlistItems) ? wishlistItems.length : 0;
   if (isError) {
     return (
       <div className="text-center py-20">
@@ -42,11 +69,20 @@ export function LibraryPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Card className="card-glass">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium text-gray-300">Total Games</CardTitle>
-                    <Gamepad2 className="h-4 w-4 text-gray-400" />
+                    <CardTitle className="text-sm font-medium text-gray-300">Wishlist</CardTitle>
+                    <Heart className="h-4 w-4 text-gray-400" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-4xl font-bold">{isLoading ? <Skeleton className="h-10 w-20" /> : userLibrary.length}</div>
+                    <div className="text-4xl font-bold">
+                      {isLoadingWishlist
+                        ? <Skeleton className="h-10 w-20" />
+                        : userId
+                          ? wishlistCount
+                          : '—'}
+                    </div>
+                    {!userId && (
+                      <p className="text-xs text-gray-500 mt-1">Sign in to view your wishlist</p>
+                    )}
                 </CardContent>
             </Card>
             <Card className="card-glass">
@@ -83,25 +119,24 @@ export function LibraryPage() {
             </Card>
         </div>
       </section>
-      <section>
-        <h2 className="font-orbitron text-3xl font-bold text-blood-500 mb-6">All Games</h2>
-        {isLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-            {Array.from({ length: 10 }).map((_, i) => <Skeleton key={i} className="aspect-[3/4] rounded-lg" />)}
-          </div>
-        ) : userLibrary.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-            {userLibrary.map((game) => (
-              <GameCard key={game.id} game={game} variant="library" />
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-20 card-glass rounded-lg">
-            <h2 className="text-2xl font-bold mb-2">Your library is empty</h2>
-            <p className="text-gray-400">Games you purchase will appear here.</p>
-          </div>
-        )}
-      </section>
+    <section>
+      {isLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+          {Array.from({ length: 10 }).map((_, i) => <Skeleton key={i} className="aspect-[3/4] rounded-lg" />)}
+        </div>
+      ) : userLibrary.length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+          {userLibrary.map((game) => (
+            <GameCard key={game.id} game={game} variant="library" />
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-20 card-glass rounded-lg">
+          <h2 className="text-2xl font-bold mb-2">Your library is empty</h2>
+          <p className="text-gray-400">Games you purchase will appear here.</p>
+        </div>
+      )}
+    </section>
     </div>
   );
 }

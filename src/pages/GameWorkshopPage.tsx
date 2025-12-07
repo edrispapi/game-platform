@@ -7,11 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Download, Star, Calendar, User, ArrowLeft, Plus, Filter, Search, TrendingUp, Sparkles, Heart, Upload, File, Image as ImageIcon } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api-client";
-import { Game, WorkshopItem } from "@shared/types";
+import { gamesApi, workshopApi, getAuthToken, type GameResponse, type WorkshopItemResponse } from "@/lib/api-client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -20,6 +20,56 @@ import { UserLink } from "@/components/UserLink";
 import { WebGLImage } from "@/components/WebGLImage";
 import { generateWorkshopBanner } from "@/utils/workshop-banner";
 import { CommentReactions } from "@/components/CommentReactions";
+
+interface WorkshopItemView {
+  id: number;
+  title: string;
+  description: string;
+  downloads: number;
+  rating: number;
+  createdAt: number;
+  type: 'mod' | 'skin' | 'map' | 'tool';
+  image?: string;
+  fileUrl?: string;
+  featured?: boolean;
+  author: string;
+  authorAvatar?: string;
+  tags: string[];
+  favoritesCount?: number;
+  favorited?: boolean;
+}
+
+function mapWorkshopItem(api: WorkshopItemResponse): WorkshopItemView {
+  // Approximate rating from votes_up/down (scale 0-5)
+  const totalVotes = api.votes_up + api.votes_down;
+  const ratio = totalVotes > 0 ? api.votes_up / totalVotes : 0;
+  const rating = Math.round(ratio * 5 * 10) / 10;
+
+  // Derive type from tags if possible, otherwise default to 'mod'
+  const lowerTags = (api.tags || []).map(t => t.toLowerCase());
+  let type: 'mod' | 'skin' | 'map' | 'tool' = 'mod';
+  if (lowerTags.includes('skin')) type = 'skin';
+  else if (lowerTags.includes('map')) type = 'map';
+  else if (lowerTags.includes('tool')) type = 'tool';
+
+  return {
+    id: api.id,
+    title: api.title,
+    description: api.description,
+    downloads: api.downloads,
+    rating,
+    createdAt: new Date(api.created_at).getTime(),
+    type,
+    image: api.thumbnail_url || undefined,
+    fileUrl: api.file_url || undefined,
+    featured: (api.tags || []).includes('featured'),
+    author: api.user_id ? `user-${api.user_id}` : 'Unknown Creator',
+    authorAvatar: undefined,
+    tags: api.tags || [],
+    favoritesCount: api.votes_up,
+    favorited: false,
+  };
+}
 
 export function GameWorkshopPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -33,44 +83,54 @@ export function GameWorkshopPage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadFileUrl, setUploadFileUrl] = useState('');
   const [uploadType, setUploadType] = useState<'mod' | 'skin' | 'map' | 'tool'>('mod');
+  const [selectedItem, setSelectedItem] = useState<WorkshopItemView | null>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const isAuthed = !!getAuthToken();
   const queryClient = useQueryClient();
 
   const { data: game, isLoading: isLoadingGame } = useQuery({
     queryKey: ['game', slug],
-    queryFn: () => api<Game>(`/api/games/${slug}`),
+    queryFn: async () => {
+      if (!slug) return null;
+      const res = await gamesApi.search({ search: slug.replace(/-/g, ' ') }, 1, 1);
+      return res.games[0] as GameResponse | undefined;
+    },
     enabled: !!slug,
   });
 
   const { data: itemsResponse, isLoading: isLoadingItems } = useQuery({
     queryKey: ['workshop-items', slug],
-    queryFn: () => api<{ items: WorkshopItem[] }>(`/api/games/${slug}/workshop/items`),
+    queryFn: () => workshopApi.list(slug ? slug.replace(/-/g, ' ') : undefined),
     enabled: !!slug,
   });
 
+  const ensureAuthenticated = () => {
+    const token = getAuthToken();
+    if (!token) {
+      toast.error('Please sign in to react or vote.');
+      return false;
+    }
+    return true;
+  };
+
   const downloadMutation = useMutation({
-    mutationFn: async (itemId: string) => {
-      const response = await api<{ success: boolean; downloadUrl?: string; filename?: string }>(`/api/workshop/items/${itemId}/download`, {
-        method: 'POST',
-      });
-      return response;
+    mutationFn: async (itemId: number) => {
+      return workshopApi.download(itemId);
     },
     onSuccess: (data, itemId) => {
-      // Find the item to get file URL
       const item = allItems.find(i => i.id === itemId);
-      const downloadUrl = data.downloadUrl || item?.fileUrl;
-      
+      const downloadUrl = data.download_url || item?.fileUrl;
+
       if (downloadUrl && (downloadUrl.startsWith('http') || downloadUrl.startsWith('data:'))) {
-        // Create a temporary link and trigger download
         const link = document.createElement('a');
         link.href = downloadUrl;
-        link.download = data.filename || item?.title || 'download';
+        link.download = item?.title || 'download';
         link.target = '_blank';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         toast.success('Download started!');
       } else if (item?.fileUrl) {
-        // Try to open file URL
         window.open(item.fileUrl, '_blank');
         toast.success('Opening file...');
       } else {
@@ -84,15 +144,13 @@ export function GameWorkshopPage() {
   });
 
   const favoriteMutation = useMutation({
-    mutationFn: (itemId: string) => api<{ favorited: boolean }>(`/api/workshop/items/${itemId}/favorite`, {
-      method: 'POST',
-    }),
-    onSuccess: (data) => {
-      toast.success(data.favorited ? 'Added to favorites!' : 'Removed from favorites');
+    mutationFn: (itemId: number) => workshopApi.vote(itemId, true),
+    onSuccess: () => {
+      toast.success('Thanks for the upvote!');
       queryClient.invalidateQueries({ queryKey: ['workshop-items', slug] });
     },
     onError: (error: Error) => {
-      toast.error(`Failed to update favorite: ${error.message}`);
+      toast.error(`Failed to update vote: ${error.message}`);
     },
   });
 
@@ -115,7 +173,7 @@ export function GameWorkshopPage() {
     });
   };
 
-  const allItems = itemsResponse?.items ?? [];
+  const allItems: WorkshopItemView[] = (itemsResponse?.items ?? []).map(mapWorkshopItem);
   const filteredItems = allItems.filter(item => {
     const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.description.toLowerCase().includes(searchQuery.toLowerCase());
@@ -130,6 +188,16 @@ export function GameWorkshopPage() {
   const featuredItems = filteredItems.filter(item => item.featured);
   const regularItems = filteredItems.filter(item => !item.featured);
 
+  const openDetail = (item: WorkshopItemView) => {
+    setSelectedItem(item);
+    setIsDetailOpen(true);
+  };
+
+  const handleReaction = (label: string) => {
+    if (!ensureAuthenticated()) return;
+    toast.success(`${label} reaction recorded`);
+  };
+
   const uploadMutation = useMutation({
     mutationFn: async () => {
       if (!slug) throw new Error('Game slug is required');
@@ -137,7 +205,7 @@ export function GameWorkshopPage() {
         .split(',')
         .map(tag => tag.trim())
         .filter(Boolean);
-      
+
       // Handle file upload if present
       let fileUrl = uploadFileUrl;
       if (uploadFile) {
@@ -148,17 +216,16 @@ export function GameWorkshopPage() {
           toast.error('Failed to upload file. Continuing without file...');
         }
       }
-      
-      return api<WorkshopItem>(`/api/games/${slug}/workshop/items`, {
-        method: 'POST',
-        body: JSON.stringify({
-          title: uploadTitle,
-          description: uploadDescription,
-          type: uploadType,
-          image: uploadImage || undefined,
-          fileUrl: fileUrl || undefined,
-          tags,
-        }),
+
+      return workshopApi.create({
+        title: uploadTitle,
+        description: uploadDescription,
+        type: uploadType,
+        visibility: 'public',
+        tags,
+        game_id: slug,
+        file_url: fileUrl || undefined,
+        thumbnail_url: uploadImage || undefined,
       });
     },
     onSuccess: () => {
@@ -255,12 +322,16 @@ export function GameWorkshopPage() {
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {featuredItems.map(item => (
-                  <Card key={item.id} className="bg-void-800 border-void-700 hover:border-blood-500/50 transition-colors">
+                  <Card 
+                    key={item.id} 
+                    className="bg-void-800 border-void-700 hover:border-blood-500/50 transition-colors group cursor-pointer"
+                    onClick={() => openDetail(item)}
+                  >
                     <div className="relative h-48 overflow-hidden rounded-t-lg bg-void-700">
                       {(() => {
                         const bannerUrl = item.image && !item.image.includes('storage.example.com') 
                           ? item.image 
-                          : generateWorkshopBanner(item.title, item.type, item.id);
+                          : generateWorkshopBanner(item.title, item.type, String(item.id));
                         return (
                           <img 
                             src={bannerUrl} 
@@ -268,7 +339,7 @@ export function GameWorkshopPage() {
                             className="w-full h-full object-cover"
                             onError={(e) => {
                               // Fallback to generated banner if image fails
-                              const fallbackUrl = generateWorkshopBanner(item.title, item.type, item.id);
+                              const fallbackUrl = generateWorkshopBanner(item.title, item.type, String(item.id));
                               if ((e.target as HTMLImageElement).src !== fallbackUrl) {
                                 (e.target as HTMLImageElement).src = fallbackUrl;
                               } else {
@@ -296,11 +367,11 @@ export function GameWorkshopPage() {
                         <div className="flex items-center gap-2">
                           <Avatar className="h-5 w-5">
                             <AvatarImage src={item.authorAvatar} />
-                            <AvatarFallback>{item.author.substring(0, 2)}</AvatarFallback>
+                            <AvatarFallback>{(item.author || '??').substring(0, 2).toUpperCase()}</AvatarFallback>
                           </Avatar>
-                          <UserLink username={item.author}>
-                          {item.author}
-                        </UserLink>
+                          <UserLink username={item.author || 'unknown'}>
+                            {item.author || 'Unknown Creator'}
+                          </UserLink>
                         </div>
                         <span>{formatDistanceToNow(new Date(item.createdAt), { addSuffix: true, includeSeconds: true })}</span>
                       </div>
@@ -322,7 +393,11 @@ export function GameWorkshopPage() {
                             variant="ghost"
                             size="sm"
                             className={`h-8 w-8 p-0 ${item.favorited ? 'text-red-500 hover:text-red-600' : 'text-gray-400 hover:text-red-500'}`}
-                            onClick={() => favoriteMutation.mutate(item.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!ensureAuthenticated()) return;
+                              favoriteMutation.mutate(item.id);
+                            }}
                             disabled={favoriteMutation.isPending}
                             title={item.favorited ? 'Remove from favorites' : 'Add to favorites'}
                           >
@@ -331,7 +406,10 @@ export function GameWorkshopPage() {
                           <Button 
                             size="sm" 
                             className="bg-blood-500 hover:bg-blood-600"
-                            onClick={() => downloadMutation.mutate(item.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              downloadMutation.mutate(item.id);
+                            }}
                             disabled={downloadMutation.isPending}
                           >
                             <Download className="mr-2 h-4 w-4" /> Download
@@ -355,18 +433,22 @@ export function GameWorkshopPage() {
             <h2 className="text-2xl font-bold mb-4">All Creations</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {regularItems.map(item => (
-                <Card key={item.id} className="bg-void-800 border-void-700 hover:border-blood-500/50 transition-colors">
+                <Card 
+                  key={item.id} 
+                  className="bg-void-800 border border-void-700/70 hover:border-blood-500/60 transition-all hover:-translate-y-1 shadow-lg shadow-black/30 cursor-pointer"
+                  onClick={() => openDetail(item)}
+                >
                   <div className="relative h-40 overflow-hidden rounded-t-lg bg-void-700">
                     {(() => {
                       const bannerUrl = item.image && !item.image.includes('storage.example.com') 
                         ? item.image 
-                        : generateWorkshopBanner(item.title, item.type, item.id);
+                        : generateWorkshopBanner(item.title, item.type, String(item.id));
                       return (
                         <WebGLImage 
                           src={bannerUrl} 
                           alt={item.title} 
                           className="w-full h-full object-cover"
-                          fallback={generateWorkshopBanner(item.title, item.type, item.id)}
+                          fallback={generateWorkshopBanner(item.title, item.type, String(item.id))}
                         />
                       );
                     })()}
@@ -387,10 +469,10 @@ export function GameWorkshopPage() {
                       <div className="flex items-center gap-2">
                         <Avatar className="h-5 w-5">
                           <AvatarImage src={item.authorAvatar} />
-                          <AvatarFallback>{item.author.substring(0, 2)}</AvatarFallback>
+                          <AvatarFallback>{(item.author || '??').substring(0, 2).toUpperCase()}</AvatarFallback>
                         </Avatar>
-                        <UserLink username={item.author}>
-                          {item.author}
+                        <UserLink username={item.author || 'unknown'}>
+                          {item.author || 'Unknown Creator'}
                         </UserLink>
                       </div>
                       <span>{formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</span>
@@ -413,16 +495,23 @@ export function GameWorkshopPage() {
                           variant="ghost"
                           size="sm"
                           className={`h-8 w-8 p-0 ${item.favorited ? 'text-red-500 hover:text-red-600' : 'text-gray-400 hover:text-red-500'}`}
-                          onClick={() => favoriteMutation.mutate(item.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!ensureAuthenticated()) return;
+                            favoriteMutation.mutate(item.id);
+                          }}
                           disabled={favoriteMutation.isPending}
-                          title={item.favorited ? 'Remove from favorites' : 'Add to favorites'}
+                          title={isAuthed ? (item.favorited ? 'Remove from favorites' : 'Add to favorites') : 'Sign in to vote'}
                         >
                           <Heart className={`h-4 w-4 ${item.favorited ? 'fill-current' : ''}`} />
                         </Button>
                         <Button 
                           size="sm" 
                           className="bg-blood-500 hover:bg-blood-600"
-                          onClick={() => downloadMutation.mutate(item.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            downloadMutation.mutate(item.id);
+                          }}
                           disabled={downloadMutation.isPending}
                         >
                           <Download className="mr-2 h-4 w-4" /> Download
@@ -462,16 +551,16 @@ export function GameWorkshopPage() {
             {featuredItems.map(item => (
               <Card key={item.id} className="bg-void-800 border-void-700 hover:border-blood-500/50 transition-colors">
                 <div className="relative h-48 overflow-hidden rounded-t-lg bg-void-700">
-                  {(() => {
-                    const bannerUrl = item.image && !item.image.includes('storage.example.com') 
-                      ? item.image 
-                      : generateWorkshopBanner(item.title, item.type, item.id);
+                    {(() => {
+                      const bannerUrl = item.image && !item.image.includes('storage.example.com') 
+                        ? item.image 
+                        : generateWorkshopBanner(item.title, item.type, String(item.id));
                     return (
                       <WebGLImage 
                         src={bannerUrl} 
                         alt={item.title} 
                         className="w-full h-full object-cover"
-                        fallback={generateWorkshopBanner(item.title, item.type, item.id)}
+                        fallback={generateWorkshopBanner(item.title, item.type, String(item.id))}
                       />
                     );
                   })()}
@@ -677,6 +766,121 @@ export function GameWorkshopPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
+        <DialogContent className="bg-void-900 border-void-700 max-w-4xl">
+          {selectedItem && (
+            <div className="space-y-4">
+              <DialogHeader>
+                <DialogTitle className="flex items-center justify-between gap-4">
+                  <span className="text-2xl">{selectedItem.title}</span>
+                  <Badge variant="secondary">{selectedItem.type}</Badge>
+                </DialogTitle>
+                <DialogDescription className="text-gray-400">
+                  Discover the details, reactions, and downloads for this creation.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="relative rounded-xl overflow-hidden bg-void-800 border border-void-700">
+                  <WebGLImage
+                    src={selectedItem.image || generateWorkshopBanner(selectedItem.title, selectedItem.type, String(selectedItem.id))}
+                    fallback={generateWorkshopBanner(selectedItem.title, selectedItem.type, String(selectedItem.id))}
+                    alt={selectedItem.title}
+                    className="w-full h-full object-cover min-h-[240px]"
+                  />
+                </div>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 text-sm text-gray-300">
+                    <Avatar className="h-9 w-9">
+                      <AvatarImage src={selectedItem.authorAvatar} />
+                      <AvatarFallback>{(selectedItem.author || '??').substring(0, 2).toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <UserLink username={selectedItem.author || 'unknown'}>
+                        {selectedItem.author || 'Unknown Creator'}
+                      </UserLink>
+                      <div className="text-xs text-gray-500">
+                        {formatDistanceToNow(new Date(selectedItem.createdAt), { addSuffix: true })}
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-300 leading-relaxed">{selectedItem.description}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedItem.tags.length ? selectedItem.tags.map(tag => (
+                      <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
+                    )) : <span className="text-xs text-gray-500">No tags added</span>}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 text-sm text-gray-400">
+                    <div className="flex items-center gap-1">
+                      <Download className="h-4 w-4" />
+                      <span>{selectedItem.downloads.toLocaleString()} downloads</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Star className="h-4 w-4 fill-current text-yellow-500" />
+                      <span>{selectedItem.rating.toFixed(1)} rating</span>
+                    </div>
+                    {selectedItem.favoritesCount !== undefined && (
+                      <div className="flex items-center gap-1">
+                        <Heart className="h-4 w-4 text-red-400" />
+                        <span>{selectedItem.favoritesCount} likes</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => downloadMutation.mutate(selectedItem.id)}
+                      disabled={downloadMutation.isPending}
+                    >
+                      <Download className="mr-2 h-4 w-4" /> Download
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        if (!ensureAuthenticated()) return;
+                        favoriteMutation.mutate(selectedItem.id);
+                      }}
+                      disabled={favoriteMutation.isPending}
+                    >
+                      <Heart className="mr-2 h-4 w-4" />
+                      Like
+                    </Button>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
+                      <CommentReactions compact />
+                      <button
+                        className="flex items-center gap-1 px-2 py-1 rounded-full bg-void-800 border border-void-700 hover:border-blood-500/60 transition-colors"
+                        onClick={() => handleReaction('Yes')}
+                      >
+                        <span className="font-semibold text-white">Yes</span>
+                      </button>
+                      <button
+                        className="flex items-center gap-1 px-2 py-1 rounded-full bg-void-800 border border-void-700 hover:border-blood-500/60 transition-colors"
+                        onClick={() => handleReaction('No')}
+                      >
+                        <span className="font-semibold text-white">No</span>
+                      </button>
+                      <button
+                        className="flex items-center gap-1 px-2 py-1 rounded-full bg-void-800 border border-void-700 hover:border-blood-500/60 transition-colors"
+                        onClick={() => handleReaction('Funny')}
+                      >
+                        <span className="font-semibold text-white">Funny</span>
+                      </button>
+                      <button
+                        className="flex items-center gap-1 px-2 py-1 rounded-full bg-void-800 border border-void-700 hover:border-blood-500/60 transition-colors"
+                        onClick={() => handleReaction('Award')}
+                      >
+                        <span className="font-semibold text-white">Award</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

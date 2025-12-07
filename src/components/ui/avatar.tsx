@@ -39,7 +39,12 @@ const AvatarFallback = React.forwardRef<
   <AvatarPrimitive.Fallback
     ref={ref}
     className={cn(
-      "flex h-full w-full items-center justify-center rounded-full bg-muted",
+      // Modern login-style avatar fallback:
+      // circular, gradient background, bold uppercase initials, subtle glow
+      "flex h-full w-full items-center justify-center rounded-full",
+      "bg-gradient-to-br from-blood-600 via-crimson-600 to-purple-700",
+      "text-white text-xs font-semibold tracking-wide uppercase",
+      "shadow-[0_0_18px_rgba(248,50,93,0.45)] border border-void-800/80",
       className
     )}
     {...props}

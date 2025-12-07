@@ -4,11 +4,11 @@ import { NavLink, Outlet, Link, useNavigate } from "react-router-dom";
 import { Gamepad2, Library, User, Store, Users, Settings, ShoppingCart, Bell, Search, LogOut } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { getDefaultAvatarForUsername } from "@/config/gameAvatarIcons";
 import { useCartStore } from "@/stores/cart-store";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api-client";
-import { Notification, UserProfile } from "@shared/types";
+import { authApi, notificationsApi, getCurrentUserId } from "@/lib/api-client";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
@@ -22,15 +22,38 @@ export function DashboardLayout(): JSX.Element {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const cartItemCount = useCartStore(s => s.items.length);
-  const { data: notificationsResponse } = useQuery({
-    queryKey: ['notifications'],
-    queryFn: () => api<{ items: Notification[] }>('/api/notifications'),
+  const currentUserId = getCurrentUserId();
+
+  const { data: notifications } = useQuery({
+    queryKey: ["notifications", currentUserId],
+    queryFn: async () => {
+      if (!currentUserId) return [];
+      try {
+        return await notificationsApi.list(currentUserId, false, 50);
+      } catch (err: any) {
+        // If the notifications service isn't wired to the gateway, fail soft
+        const msg = String(err?.message || '');
+        if (msg.includes('404')) return [];
+        return [];
+      }
+    },
+    enabled: !!currentUserId,
     refetchInterval: 60000,
   });
-  const unreadCount = notificationsResponse?.items.filter(n => !n.read).length ?? 0;
-  const { data: profile } = useQuery<UserProfile>({
-    queryKey: ['profile'],
-    queryFn: () => api('/api/profile'),
+
+  const unreadCount = notifications?.filter((n) => !n.is_read).length ?? 0;
+
+  const { data: profile } = useQuery({
+    queryKey: ["profile"],
+    enabled: !!currentUserId,
+    retry: false,
+    queryFn: async () => {
+      try {
+        return await authApi.me();
+      } catch {
+        return null;
+      }
+    },
   });
   const handleLogout = () => {
     toast.info("You have been logged out.");
@@ -120,65 +143,96 @@ export function DashboardLayout(): JSX.Element {
                 />
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
             </form>
-            <div className="flex items-center gap-4">
-                <TooltipProvider>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <NavLink
-                            to="/notifications"
-                            className={({ isActive }) =>
-                                `relative p-3 rounded-full transition-colors duration-200 ${
-                                isActive ? "bg-blood-500/20 text-blood-400" : "text-gray-400 hover:bg-void-800 hover:text-white"
-                                }`
-                            }
-                            >
-                            <Bell className="h-6 w-6" />
-                            {unreadCount > 0 && (
-                                <Badge className="absolute top-1 right-1 h-4 w-4 p-0 flex items-center justify-center text-xs bg-blood-500 text-white">
-                                {unreadCount}
-                                </Badge>
-                            )}
-                            </NavLink>
-                        </TooltipTrigger>
-                        <TooltipContent><p>Notifications</p></TooltipContent>
-                    </Tooltip>
-                </TooltipProvider>
-                <DropdownMenu>
+            <TooltipProvider>
+              <div className="flex items-center gap-4">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <NavLink
+                      to="/notifications"
+                      className={({ isActive }) =>
+                        `relative p-3 rounded-full transition-colors duration-200 ${
+                          isActive ? "bg-blood-500/20 text-blood-400" : "text-gray-400 hover:bg-void-800 hover:text-white"
+                        }`
+                      }
+                    >
+                      <Bell className="h-6 w-6" />
+                      {unreadCount > 0 && (
+                        <Badge className="absolute top-1 right-1 h-4 w-4 p-0 flex items-center justify-center text-xs bg-blood-500 text-white">
+                          {unreadCount}
+                        </Badge>
+                      )}
+                    </NavLink>
+                  </TooltipTrigger>
+                  <TooltipContent><p>Notifications</p></TooltipContent>
+                </Tooltip>
+                {profile ? (
+                  <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <div className="relative">
+                      <button type="button" className="relative">
                         <Avatar className="h-10 w-10 cursor-pointer border-2 border-transparent hover:border-blood-500">
-                              <AvatarImage src={profile?.avatar} alt={profile?.username || 'User'} />
-                              <AvatarFallback>{(profile?.username || 'U').substring(0, 2).toUpperCase()}</AvatarFallback>
+                          <AvatarImage
+                            src={(profile as any).avatar_url || getDefaultAvatarForUsername(profile.username)}
+                            alt={profile.username || 'User'}
+                          />
+                          <AvatarFallback>
+                            {(profile.username || 'U').substring(0, 2).toUpperCase()}
+                          </AvatarFallback>
                         </Avatar>
-                          {profile && (
-                            <div className={`absolute -bottom-1 -right-1 h-3 w-3 rounded-full border-2 border-void-900 ${
-                              profile.status === 'Online' ? 'bg-green-500' : 
-                              profile.status === 'In Game' ? 'bg-blue-500' : 
-                              profile.status === 'Offline' ? 'bg-orange-500' :
-                              'bg-gray-500'
-                            }`} title={profile.status} />
-                          )}
-                        </div>
+                        <div
+                          className={`absolute -bottom-1 -right-1 h-3 w-3 rounded-full border-2 border-void-900 ${
+                            String(profile.status).toLowerCase() === 'active' ? 'bg-green-500' : 'bg-gray-500'
+                          }`}
+                          title={String(profile.status).toLowerCase() === 'active' ? 'Active' : String(profile.status)}
+                        />
+                      </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="bg-void-800 border-void-700 text-gray-200 w-56">
-                        <DropdownMenuLabel className="flex flex-col">
-                          <span className="font-semibold">{profile?.username || 'User'}</span>
-                          {profile && (
-                            <span className="text-xs text-gray-400 mt-1">
-                              {profile.hoursPlayed} hrs • {profile.friendsCount} friends
-                            </span>
-                          )}
-                        </DropdownMenuLabel>
-                        <DropdownMenuSeparator className="bg-void-700" />
-                        <DropdownMenuItem asChild><Link to="/profile" className="cursor-pointer flex items-center"><User className="mr-2 h-4 w-4" /> Profile</Link></DropdownMenuItem>
-                        <DropdownMenuItem asChild><Link to="/settings" className="cursor-pointer flex items-center"><Settings className="mr-2 h-4 w-4" /> Settings</Link></DropdownMenuItem>
-                        <DropdownMenuSeparator className="bg-void-700" />
-                        <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-red-400 focus:bg-red-500/20 focus:text-red-300 flex items-center">
-                            <LogOut className="mr-2 h-4 w-4" /> Logout
-                        </DropdownMenuItem>
+                    <DropdownMenuContent
+                      align="end"
+                      className="bg-void-800 border-void-700 text-gray-200 w-56"
+                    >
+                      <DropdownMenuLabel className="flex flex-col">
+                        <span className="font-semibold">{profile.username}</span>
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator className="bg-void-700" />
+                      <DropdownMenuItem asChild>
+                        <Link to="/profile" className="cursor-pointer flex items-center">
+                          <User className="mr-2 h-4 w-4" /> Profile
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link to="/settings" className="cursor-pointer flex items-center">
+                          <Settings className="mr-2 h-4 w-4" /> Settings
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator className="bg-void-700" />
+                      <DropdownMenuItem
+                        onClick={handleLogout}
+                        className="cursor-pointer text-red-400 focus:bg-red-500/20 focus:text-red-300 flex items-center"
+                      >
+                        <LogOut className="mr-2 h-4 w-4" /> Logout
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
-                </DropdownMenu>
-            </div>
+                  </DropdownMenu>
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/login')}
+                        className="relative"
+                      >
+                        <Avatar className="h-10 w-10 cursor-pointer border-2 border-transparent hover:border-blood-500 transition-colors">
+                          <AvatarFallback>U</AvatarFallback>
+                        </Avatar>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Sign in</p>
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
+            </TooltipProvider>
         </header>
         <main className="flex-1 overflow-y-auto">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-10 lg:py-12">

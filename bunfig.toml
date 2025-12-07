@@ -1,6 +1,0 @@
-root = "."
-
-[alias]
-"@/*" = "./src/*"
-"@shared/*" = "./shared/*"
-

@@ -4,10 +4,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Clock, Trophy, Users, X, Gamepad2 } from "lucide-react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api-client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, authApi, gamesApi, shoppingApi, getCurrentUserId } from "@/lib/api-client";
 import { Game, UserProfile, Order, Friend } from "@shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GameCard } from "@/components/GameCard";
@@ -19,11 +19,21 @@ import { Link } from "react-router-dom";
 import { Progress } from "@/components/ui/progress";
 import { UserLink } from "@/components/UserLink";
 import { cn } from "@/lib/utils";
+import { getDefaultAvatarForUsername } from "@/config/gameAvatarIcons";
 
 function OrderHistory() {
   const { data: ordersResponse, isLoading, isError } = useQuery({
     queryKey: ['orders'],
-    queryFn: () => api<{ items: Order[] }>('/api/orders'),
+    queryFn: async () => {
+      try {
+        return await api<{ items: Order[] }>('/api/v1/purchases/orders');
+      } catch (err: any) {
+        // If endpoint doesn't exist or service is unavailable, return empty array
+        console.warn('Order history endpoint unavailable:', err);
+        return { items: [] };
+      }
+    },
+    retry: false,
   });
   if (isLoading) {
     return (
@@ -35,7 +45,20 @@ function OrderHistory() {
     );
   }
   if (isError || !ordersResponse) {
-    return <p className="text-center text-red-500">Failed to load order history.</p>;
+    return (
+      <div className="text-center py-8">
+        <p className="text-gray-400 mb-2">Order history is currently unavailable.</p>
+        <p className="text-xs text-gray-500">This feature will be available soon.</p>
+      </div>
+    );
+  }
+  if (!ordersResponse.items || ordersResponse.items.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-gray-400">No orders yet.</p>
+        <p className="text-xs text-gray-500 mt-1">Your purchase history will appear here.</p>
+      </div>
+    );
   }
   const orders = ordersResponse.items;
   return (
@@ -67,32 +90,63 @@ function OrderHistory() {
 }
 
 export function ProfilePage() {
+  const queryClient = useQueryClient();
   const [hoursDialogOpen, setHoursDialogOpen] = useState(false);
   const [friendsDialogOpen, setFriendsDialogOpen] = useState(false);
   const [avatarDialogOpen, setAvatarDialogOpen] = useState(false);
   
-  const { data: profile, isLoading: isLoadingProfile, isError: isProfileError } = useQuery<UserProfile>({
-    queryKey: ['profile'],
-    queryFn: () => api('/api/profile'),
+  // Fetch profile from FastAPI
+  const { data: user, isLoading: isLoadingProfile, isError: isProfileError } = useQuery({
+    queryKey: ['user', 'me'],
+    enabled: !!getCurrentUserId(),
+    retry: false,
+    queryFn: async () => {
+      try {
+        return await authApi.me();
+      } catch (err) {
+        return null;
+      }
+    },
   });
+  
+  // Map user to UserProfile format
+  const profile: UserProfile | undefined = user ? {
+    id: String(user.id),
+    username: user.username,
+    bio: user.bio || '',
+    avatar: user.avatar_url || getDefaultAvatarForUsername(user.username),
+    email: user.email,
+    status: 'Online' as const,
+    hoursPlayed: 0, // TODO: Fetch from game service
+    achievementsCount: 0, // TODO: Fetch from achievement service
+    friendsCount: 0, // TODO: Fetch from friends service
+    favoriteGames: [],
+    settings: {
+      profilePublic: user.profile_visibility === 'public',
+      emailNotifications: true, // TODO: Fetch from preferences
+      hideOnlineStatus: !user.show_online_status,
+      twoFactorEnabled: user.two_factor_enabled,
+    },
+  } : undefined;
   
   const { data: hoursDetails, isLoading: isLoadingHours } = useQuery({
     queryKey: ['profile-hours-details'],
-    queryFn: () => api<{ total: number; byGenre: Array<{ genre: string; hours: number }>; topGenre: { genre: string; hours: number } | null }>('/api/profile/hours-details'),
+    queryFn: () => Promise.resolve({ total: 0, byGenre: [], topGenre: null }), // Placeholder - TODO: Implement
     enabled: hoursDialogOpen,
   });
   
   const { data: friendsDetails, isLoading: isLoadingFriends } = useQuery({
     queryKey: ['profile-friends-details'],
-    queryFn: () => api<{ items: Array<{ id: string; username: string; avatar: string; status: string; currentGame: string | null }> }>('/api/profile/friends-details'),
+    queryFn: () => Promise.resolve({ items: [] }), // Placeholder - TODO: Implement
     enabled: friendsDialogOpen,
   });
   
   const { data: gamesResponse, isLoading: isLoadingGames } = useQuery({
-    queryKey: ['games'],
-    queryFn: () => api<{ items: Game[] }>('/api/games'),
+    queryKey: ['games', 'library'],
+    queryFn: () => gamesApi.search({}, 1, 20), // Get games from catalog
+    enabled: false, // Disabled for now - can be enabled when needed
   });
-  const favoriteGames = gamesResponse?.items.filter(game => profile?.favoriteGames.includes(game.slug)) ?? [];
+  const favoriteGames: Game[] = [];
 
   // Predefined gaming avatars (can be extended)
   const avatarOptions = [
@@ -120,12 +174,9 @@ export function ProfilePage() {
 
   const changeAvatarMutation = useMutation({
     mutationFn: (avatarUrl: string) =>
-      api<{ success: boolean }>("/api/profile/avatar", {
-        method: "POST",
-        body: JSON.stringify({ avatarUrl }),
-      }),
+      authApi.updateProfile({ avatar_url: avatarUrl }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["profile"] });
+      queryClient.invalidateQueries({ queryKey: ["user", "me"] });
       setAvatarDialogOpen(false);
     },
   });
@@ -235,10 +286,10 @@ export function ProfilePage() {
               <Gamepad2 className="h-6 w-6 text-blood-500" />
               Choose Your Avatar
             </DialogTitle>
+            <DialogDescription id="avatar-desc">
+              Pick one of the gaming avatars below. You can change this at any time.
+            </DialogDescription>
           </DialogHeader>
-          <p className="text-sm text-gray-400 mb-4">
-            Pick one of the gaming avatars below. You can change this at any time.
-          </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
             {avatarOptions.map((url) => (
               <button
@@ -274,6 +325,7 @@ export function ProfilePage() {
               <Clock className="h-6 w-6 text-blood-500" />
               Playtime Statistics
             </DialogTitle>
+            <DialogDescription>Detailed breakdown of your playtime.</DialogDescription>
           </DialogHeader>
           {isLoadingHours ? (
             <div className="space-y-4">
@@ -331,6 +383,7 @@ export function ProfilePage() {
               <Users className="h-6 w-6 text-blood-500" />
               Friends ({profile.friendsCount})
             </DialogTitle>
+            <DialogDescription>People you’ve added as friends.</DialogDescription>
           </DialogHeader>
           {isLoadingFriends ? (
             <div className="space-y-4">
