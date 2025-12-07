@@ -1,40 +1,18 @@
 'use client';
+import { useMemo } from "react";
 import { GameCard } from "@/components/GameCard";
 import { useQuery } from "@tanstack/react-query";
-import { gamesApi, shoppingApi, getCurrentUserId } from "@/lib/api-client";
+import { shoppingApi, getCurrentUserId } from "@/lib/api-client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { Clock, Heart } from "lucide-react";
 import { UserHoursByGenre } from "@shared/types";
-function mapApiGameToLibraryGame(game: any) {
-  return {
-    id: String(game.id),
-    slug: game.slug || game.title?.toLowerCase().replace(/\s+/g, "-") || "",
-    title: game.title || "Untitled Game",
-    description: game.description || game.short_description || "",
-    price: game.price || 0,
-    coverImage: game.cover_image_url || game.banner_image_url || "/images/default-cover.svg",
-    bannerImage: game.banner_image_url || game.cover_image_url || "/images/default-banner.svg",
-    tags: Array.isArray(game.tags) ? game.tags : [],
-    reviews: [],
-    developer: game.developer,
-    publisher: game.publisher,
-    releaseDate: game.release_date,
-  };
-}
 
 export function LibraryPage() {
   const userId = getCurrentUserId();
-  const { data: gamesResponse, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['library-games'],
-    queryFn: () => gamesApi.search({}, 1, 100),
-    retry: 3,
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-    staleTime: 5 * 60 * 1000,
-  });
-  const { data: wishlists, isLoading: isLoadingWishlist } = useQuery({
+  const { data: wishlists, isLoading: isLoadingWishlist, isError, error, refetch } = useQuery({
     queryKey: ['wishlists', userId],
     queryFn: async () => {
       if (!userId) return [];
@@ -44,24 +22,68 @@ export function LibraryPage() {
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });
+
   // TODO: wire to FastAPI hours-by-genre endpoint when available
   const hoursByGenre: UserHoursByGenre[] = [];
-
-  const userLibrary = (gamesResponse?.games ?? []).map(mapApiGameToLibraryGame);
   const totalHours = hoursByGenre.reduce((sum, item) => sum + item.hours, 0);
+
   const wishlistItems = (wishlists?.[0]?.items ?? []) as any[];
   const wishlistCount = Array.isArray(wishlistItems) ? wishlistItems.length : 0;
+
+  const wishlistGames = useMemo(
+    () =>
+      (Array.isArray(wishlistItems) ? wishlistItems : []).map((item: any) => {
+        const title = item.game_name || item.title || 'Untitled Game';
+        const slug =
+          item.game_slug ||
+          item.slug ||
+          (title ? title.toLowerCase().replace(/\s+/g, "-") : "");
+        const cover =
+          item.cover_image_url ||
+          item.banner_image_url ||
+          item.thumbnail_url ||
+          "/images/default-cover.svg";
+        const banner = item.banner_image_url || cover;
+
+        return {
+          id: String(item.game_id ?? item.id ?? slug ?? title),
+          slug,
+          title,
+          description: item.description || item.short_description || "",
+          price: item.price_when_added ?? item.price ?? 0,
+          coverImage: cover,
+          bannerImage: banner,
+          tags: Array.isArray(item.tags) ? item.tags : [],
+          reviews: [],
+          developer: item.developer,
+          publisher: item.publisher,
+          releaseDate: item.release_date,
+        };
+      }),
+    [wishlistItems]
+  );
+
   if (isError) {
     return (
       <div className="text-center py-20">
-        <div className="text-red-500 mb-4 text-lg font-bold">Failed to load your library. Please try again later.</div>
-        {error && <p className="text-sm text-gray-400 mb-4">{error.message}</p>}
+        <div className="text-red-500 mb-4 text-lg font-bold">Failed to load your wishlist. Please try again later.</div>
+        {error && <p className="text-sm text-gray-400 mb-4">{(error as Error).message}</p>}
         <Button onClick={() => refetch()} className="bg-blood-500 hover:bg-blood-600">
           Retry
         </Button>
       </div>
     );
   }
+
+  if (!userId) {
+    return (
+      <div className="text-center py-20">
+        <h2 className="text-3xl font-bold text-blood-500 mb-3">Sign in to view your wishlist</h2>
+        <p className="text-gray-400 mb-4">Your wishlist games will appear here after you log in.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="animate-fade-in space-y-12">
       <section>
@@ -74,15 +96,8 @@ export function LibraryPage() {
                 </CardHeader>
                 <CardContent>
                     <div className="text-4xl font-bold">
-                      {isLoadingWishlist
-                        ? <Skeleton className="h-10 w-20" />
-                        : userId
-                          ? wishlistCount
-                          : '—'}
+                      {isLoadingWishlist ? <Skeleton className="h-10 w-20" /> : wishlistCount}
                     </div>
-                    {!userId && (
-                      <p className="text-xs text-gray-500 mt-1">Sign in to view your wishlist</p>
-                    )}
                 </CardContent>
             </Card>
             <Card className="card-glass">
@@ -119,21 +134,24 @@ export function LibraryPage() {
             </Card>
         </div>
       </section>
-    <section>
-      {isLoading ? (
+      <section>
+      {isLoadingWishlist ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
           {Array.from({ length: 10 }).map((_, i) => <Skeleton key={i} className="aspect-[3/4] rounded-lg" />)}
         </div>
-      ) : userLibrary.length > 0 ? (
+      ) : wishlistGames.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-          {userLibrary.map((game) => (
+          {wishlistGames.map((game) => (
             <GameCard key={game.id} game={game} variant="library" />
           ))}
         </div>
       ) : (
         <div className="text-center py-20 card-glass rounded-lg">
-          <h2 className="text-2xl font-bold mb-2">Your library is empty</h2>
-          <p className="text-gray-400">Games you purchase will appear here.</p>
+          <h2 className="text-2xl font-bold mb-2">Your wishlist is empty</h2>
+          <p className="text-gray-400">Wishlist games will appear here after you add them.</p>
+          <Button className="mt-4 bg-blood-500 hover:bg-blood-600" onClick={() => refetch()}>
+            Refresh
+          </Button>
         </div>
       )}
     </section>
