@@ -158,7 +158,7 @@ export function GameCard({ game, variant = 'store', disableVideoPreview = false 
                 ? "group-hover:scale-105 opacity-0"
                 : "group-hover:scale-105"
             )}
-            fallback={game.coverImage}
+            fallback={game.bannerImage || "/images/default-cover.svg"}
           />
 
           {trailerUrl && isHovering && (
