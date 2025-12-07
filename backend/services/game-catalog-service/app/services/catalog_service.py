@@ -69,6 +69,7 @@ class CatalogService:
             header_image_url=payload.header_image_url,
             background_image_url=payload.background_image_url,
             capsule_image_url=payload.capsule_image_url,
+            icon_url=payload.icon_url,
             screenshots=payload.screenshots,
             movies=payload.movies,
             pc_requirements=_to_dict(payload.pc_requirements),

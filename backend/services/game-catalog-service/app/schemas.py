@@ -66,6 +66,7 @@ class GameCreate(GameBase):
     header_image_url: Optional[str] = Field(None, max_length=500)
     background_image_url: Optional[str] = Field(None, max_length=500)
     capsule_image_url: Optional[str] = Field(None, max_length=500)
+    icon_url: Optional[str] = Field(None, max_length=500)  # Avatar/Icon (1:1 square)
     screenshots: Optional[List[str]] = None
     movies: Optional[List[str]] = None
     genre_ids: Optional[List[int]] = None
@@ -96,6 +97,7 @@ class GameUpdate(BaseModel):
     header_image_url: Optional[str] = Field(None, max_length=500)
     background_image_url: Optional[str] = Field(None, max_length=500)
     capsule_image_url: Optional[str] = Field(None, max_length=500)
+    icon_url: Optional[str] = Field(None, max_length=500)  # Avatar/Icon (1:1 square)
     screenshots: Optional[List[str]] = None
     movies: Optional[List[str]] = None
     pc_requirements: Optional[SystemRequirements] = None
@@ -104,27 +106,118 @@ class GameUpdate(BaseModel):
 
 class GameResponse(GameBase):
     id: int
-    uuid: str
-    steam_app_id: Optional[int]
-    discount_percent: Optional[float]
-    header_image_url: Optional[str]
-    background_image_url: Optional[str]
-    capsule_image_url: Optional[str]
-    screenshots: Optional[List[str]]
-    movies: Optional[List[str]]
-    total_reviews: int
-    positive_reviews: int
-    negative_reviews: int
-    average_rating: Optional[float]
-    playtime_forever: int
-    playtime_2weeks: int
+    uuid: Optional[str] = None
+    steam_app_id: Optional[int] = None
+    discount_percent: Optional[float] = None
+    header_image_url: Optional[str] = None
+    background_image_url: Optional[str] = None
+    capsule_image_url: Optional[str] = None
+    icon_url: Optional[str] = None  # Avatar/Icon (1:1 square)
+    screenshots: Optional[List[str]] = None
+    movies: Optional[List[str]] = None
+    total_reviews: int = 0
+    positive_reviews: int = 0
+    negative_reviews: int = 0
+    average_rating: Optional[float] = None
+    playtime_forever: int = 0
+    playtime_2weeks: int = 0
     created_at: datetime
     updated_at: datetime
     metadata: Optional[Dict[str, Any]] = None
     genres: List["GenreResponse"] = []
     tags: List["TagResponse"] = []
     platforms: List["PlatformResponse"] = []
+    
     model_config = ConfigDict(from_attributes=True)
+    
+    @classmethod
+    def from_orm_with_relations(cls, game, genres=None, tags=None, platforms=None):
+        """Create GameResponse from ORM model with pre-loaded relations"""
+        # Convert JSONB dict to SystemRequirements Pydantic model if present
+        # SQLAlchemy JSONB fields are loaded as dicts
+        pc_req = None
+        if hasattr(game, 'pc_requirements') and game.pc_requirements is not None:
+            if isinstance(game.pc_requirements, dict):
+                try:
+                    pc_req = SystemRequirements(**game.pc_requirements)
+                except Exception:
+                    # If conversion fails, try to use as-is
+                    pc_req = game.pc_requirements
+            elif isinstance(game.pc_requirements, SystemRequirements):
+                pc_req = game.pc_requirements
+            else:
+                pc_req = game.pc_requirements
+        
+        mac_req = None
+        if hasattr(game, 'mac_requirements') and game.mac_requirements is not None:
+            if isinstance(game.mac_requirements, dict):
+                try:
+                    mac_req = SystemRequirements(**game.mac_requirements)
+                except Exception:
+                    mac_req = game.mac_requirements
+            elif isinstance(game.mac_requirements, SystemRequirements):
+                mac_req = game.mac_requirements
+            else:
+                mac_req = game.mac_requirements
+        
+        linux_req = None
+        if hasattr(game, 'linux_requirements') and game.linux_requirements is not None:
+            if isinstance(game.linux_requirements, dict):
+                try:
+                    linux_req = SystemRequirements(**game.linux_requirements)
+                except Exception:
+                    linux_req = game.linux_requirements
+            elif isinstance(game.linux_requirements, SystemRequirements):
+                linux_req = game.linux_requirements
+            else:
+                linux_req = game.linux_requirements
+        
+        return cls(
+            id=game.id,
+            uuid=str(game.uuid) if game.uuid else None,
+            title=game.title,
+            description=game.description,
+            short_description=game.short_description,
+            developer=game.developer,
+            publisher=game.publisher,
+            price=game.price,
+            original_price=game.original_price,
+            currency=game.currency,
+            game_type=game.game_type,
+            status=game.status,
+            age_rating=game.age_rating,
+            release_date=game.release_date,
+            early_access=game.early_access,
+            single_player=game.single_player,
+            multiplayer=game.multiplayer,
+            co_op=game.co_op,
+            local_co_op=game.local_co_op,
+            cross_platform=game.cross_platform,
+            vr_support=game.vr_support,
+            pc_requirements=pc_req,
+            mac_requirements=mac_req,
+            linux_requirements=linux_req,
+            steam_app_id=game.steam_app_id,
+            discount_percent=game.discount_percent,
+            header_image_url=game.header_image_url,
+            background_image_url=game.background_image_url,
+            capsule_image_url=game.capsule_image_url,
+            icon_url=game.icon_url,
+            screenshots=game.screenshots or [],
+            movies=game.movies or [],
+            total_reviews=game.total_reviews,
+            positive_reviews=game.positive_reviews,
+            negative_reviews=game.negative_reviews,
+            average_rating=game.average_rating,
+            playtime_forever=game.playtime_forever,
+            playtime_2weeks=game.playtime_2weeks,
+            created_at=game.created_at,
+            updated_at=game.updated_at,
+            metadata=game.metadata_json if hasattr(game, 'metadata_json') else None,
+            genres=genres or [],
+            tags=tags or [],
+            platforms=platforms or [],
+        )
 
 class GenreBase(BaseModel):
     name: str = Field(..., max_length=100)

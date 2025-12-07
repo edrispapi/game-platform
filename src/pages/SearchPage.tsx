@@ -1,7 +1,7 @@
 'use client';
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api-client";
+import { gamesApi, type GameResponse } from "@/lib/api-client";
 import { Game, GameTag } from "@shared/types";
 import { GameCard } from "@/components/GameCard";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,15 +14,45 @@ import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 const ALL_TAGS: GameTag[] = ['Action', 'RPG', 'Strategy', 'Indie', 'Shooter', 'Adventure'];
+
+// Helper to map GameResponse to Game
+function mapGameResponseToGame(apiGame: GameResponse): Game {
+  return {
+    id: String(apiGame.id),
+    slug: apiGame.slug || '',
+    title: apiGame.title,
+    description: apiGame.description || apiGame.short_description || '',
+    price: apiGame.price,
+    coverImage: apiGame.cover_image_url || '/images/default-cover.svg',
+    bannerImage: apiGame.banner_image_url || apiGame.cover_image_url || '/images/default-banner.svg',
+    tags: (apiGame.tags || []) as GameTag[],
+    reviews: [],
+    screenshots: [],
+    videos: [],
+    requirements: {
+      os: '',
+      processor: '',
+      memory: '',
+      graphics: '',
+      storage: '',
+    },
+  };
+}
+
 export function SearchPage() {
   const [searchParams] = useSearchParams();
   const query = searchParams.get("q") || "";
   const [selectedTags, setSelectedTags] = useState<GameTag[]>([]);
   const [priceRange, setPriceRange] = useState<[number]>([60]);
   const [sortOrder, setSortOrder] = useState('relevance');
+  
   const { data: gamesResponse, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['games'],
-    queryFn: () => api<{ items: Game[] }>('/api/games'),
+    queryKey: ['games', 'search', query],
+    queryFn: () => gamesApi.search({
+      search: query || undefined,
+      page: 1,
+      per_page: 100,
+    }),
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
     staleTime: 5 * 60 * 1000,
@@ -33,14 +63,15 @@ export function SearchPage() {
     );
   };
   const filteredAndSortedGames = useMemo(() => {
-    let games = gamesResponse?.items.filter(game =>
-      game.title.toLowerCase().includes(query.toLowerCase())
-    ) ?? [];
-    // Apply filters
+    // Map API games to frontend Game format
+    let games: Game[] = (gamesResponse?.games || []).map(mapGameResponseToGame);
+    
+    // Apply client-side filters (if needed beyond what API provides)
     if (selectedTags.length > 0) {
       games = games.filter(game => selectedTags.every(tag => game.tags.includes(tag)));
     }
     games = games.filter(game => game.price <= priceRange[0]);
+    
     // Apply sorting
     switch (sortOrder) {
       case 'price-asc':

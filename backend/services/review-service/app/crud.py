@@ -53,7 +53,10 @@ def get_review(db: Session, review_id: int) -> Optional[models.Review]:
 def get_game_reviews(db: Session, game_id: str, skip: int = 0, limit: int = 100) -> List[models.Review]:
     return (
         db.query(models.Review)
-        .filter(models.Review.game_id == game_id, models.Review.status == models.ReviewStatus.APPROVED)
+        .filter(
+            models.Review.game_id == str(game_id),
+            models.Review.status == models.ReviewStatus.APPROVED.value,
+        )
         .order_by(models.Review.created_at.desc())
         .offset(skip)
         .limit(limit)
@@ -98,6 +101,14 @@ def delete_review(db: Session, review_id: int) -> bool:
     db.commit()
     _publish("review_deleted", {"review_id": review_id})
     return True
+
+
+def delete_all_reviews(db: Session) -> None:
+    """Hard delete all reviews, comments, and votes (admin-only)."""
+    db.query(models.ReviewVote).delete()
+    db.query(models.ReviewComment).delete()
+    db.query(models.Review).delete()
+    db.commit()
 
 
 def create_review_comment(db: Session, comment: schemas.ReviewCommentCreate) -> models.ReviewComment:
@@ -146,3 +157,44 @@ def vote_review(db: Session, review_id: int, user_id: str, is_helpful: bool) -> 
     db.refresh(vote)
     _publish("review_voted", {"review_id": review_id, "user_id": user_id, "is_helpful": is_helpful})
     return vote
+
+
+def get_game_review_stats(db: Session, game_id: str) -> dict:
+    """Get aggregate statistics for a game's reviews"""
+    # Get all approved reviews for the game
+    reviews = (
+        db.query(models.Review)
+        .filter(
+            models.Review.game_id == str(game_id),
+            models.Review.status == models.ReviewStatus.APPROVED.value,
+        )
+        .all()
+    )
+    
+    if not reviews:
+        return {
+            "total_reviews": 0,
+            "average_rating": 0.0,
+            "positive_reviews": 0,
+            "negative_reviews": 0,
+            "rating_distribution": {1: 0, 2: 0, 3: 0, 4: 0, 5: 0},
+        }
+    
+    total_reviews = len(reviews)
+    total_rating = sum(r.rating for r in reviews)
+    average_rating = total_rating / total_reviews if total_reviews > 0 else 0.0
+    positive_reviews = sum(1 for r in reviews if r.is_positive)
+    negative_reviews = total_reviews - positive_reviews
+    
+    # Rating distribution
+    rating_distribution = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    for review in reviews:
+        rating_distribution[review.rating] = rating_distribution.get(review.rating, 0) + 1
+    
+    return {
+        "total_reviews": total_reviews,
+        "average_rating": round(average_rating, 2),
+        "positive_reviews": positive_reviews,
+        "negative_reviews": negative_reviews,
+        "rating_distribution": rating_distribution,
+    }

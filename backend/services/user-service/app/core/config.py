@@ -134,6 +134,20 @@ class Settings:
     )
     MONITORING_SERVICE_PORT: int = int(os.getenv("MONITORING_SERVICE_PORT", "8012"))
 
+    # ---------- SERVICE URLs (for inter-service communication) ----------
+    FRIENDS_CHAT_SERVICE_URL: str = os.getenv(
+        "FRIENDS_CHAT_SERVICE_URL",
+        "http://friends-chat-service:8013"
+    )
+    ONLINE_SERVICE_URL: str = os.getenv(
+        "ONLINE_SERVICE_URL",
+        "http://online-service:8007"
+    )
+    ACHIEVEMENT_SERVICE_URL: str = os.getenv(
+        "ACHIEVEMENT_SERVICE_URL",
+        "http://achievement-service:8011"
+    )
+
     # ---------- KAFKA ----------
     KAFKA_BOOTSTRAP_SERVERS: str = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
     KAFKA_CLIENT_ID: str = os.getenv("KAFKA_CLIENT_ID", "steam-clone-api")

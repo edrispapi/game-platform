@@ -107,7 +107,11 @@ class GameRepository:
     async def search(
         self, filters: GameSearchFilters, page: int, per_page: int
     ) -> Tuple[List[Game], int]:
-        stmt = select(Game).distinct()
+        stmt = select(Game).options(
+            selectinload(Game.genres),
+            selectinload(Game.tags),
+            selectinload(Game.platforms),
+        ).distinct()
 
         if filters.query:
             term = f"%{filters.query}%"

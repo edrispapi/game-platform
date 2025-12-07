@@ -170,6 +170,9 @@ class Settings:
     KAFKA_ACHIEVEMENT_TOPIC: str = os.getenv("KAFKA_ACHIEVEMENT_TOPIC", "achievement-events")
     KAFKA_MONITORING_TOPIC: str = os.getenv("KAFKA_MONITORING_TOPIC", "monitoring-events")
 
+    # ---------- ADMIN ----------
+    ADMIN_RESET_TOKEN: str = os.getenv("ADMIN_RESET_TOKEN", "")
+
 
 settings = Settings()
 

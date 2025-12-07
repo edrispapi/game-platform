@@ -7,10 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MessageSquare, TrendingUp, Clock, User, ArrowLeft, Plus, ThumbsUp, MessageCircle, Search, Filter, Eye, Sparkles } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import { MessageSquare, TrendingUp, Clock, User, ArrowLeft, Plus, ThumbsUp, MessageCircle, Search, Filter, Eye, Sparkles, AlertCircle } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api-client";
+import { gamesApi, forumApi, type ForumPostResponse, type ForumReplyResponse } from "@/lib/api-client";
 import { Game, ForumPost, ForumReply } from "@shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
@@ -21,6 +21,7 @@ import { CommentReactions } from "@/components/CommentReactions";
 
 export function GameForumPage() {
   const { slug } = useParams<{ slug: string }>();
+  const navigate = useNavigate();
   const [selectedPost, setSelectedPost] = useState<ForumPost | null>(null);
   const [newPostTitle, setNewPostTitle] = useState('');
   const [newPostContent, setNewPostContent] = useState('');
@@ -30,26 +31,75 @@ export function GameForumPage() {
   const [sortBy, setSortBy] = useState<'newest' | 'popular' | 'replies' | 'likes'>('newest');
   const queryClient = useQueryClient();
 
-  const { data: game, isLoading: isLoadingGame } = useQuery({
-    queryKey: ['game', slug],
-    queryFn: () => api<Game>(`/api/games/${slug}`),
+  // Fetch game by slug to get game_id
+  const { data: game, isLoading: isLoadingGame, isError: isGameError } = useQuery({
+    queryKey: ['game-by-slug', slug],
+    queryFn: () => {
+      if (!slug) throw new Error('Slug is required');
+      return gamesApi.getBySlug(slug);
+    },
     enabled: !!slug,
+    retry: 1,
   });
 
-  const { data: postsResponse, isLoading: isLoadingPosts } = useQuery({
-    queryKey: ['forum-posts', slug],
-    queryFn: () => api<{ items: ForumPost[] }>(`/api/games/${slug}/forum/posts`),
-    enabled: !!slug,
-  });
+  const gameId = game ? String(game.id) : undefined;
 
+  // Fetch forum posts for this game
+  const { data: postsResponse, isLoading: isLoadingPosts, isError: isPostsError, error: postsError } = useQuery({
+    queryKey: ['forum-posts', gameId, searchQuery, sortBy],
+    queryFn: () => forumApi.listPosts(gameId, searchQuery, sortBy, 1, 50),
+    enabled: !!gameId,
+    retry: 1,
+    retryOnMount: false,
+  });
+  
+  // Log errors for debugging
+  if (isPostsError && postsError) {
+    console.error('Failed to load forum posts:', postsError);
+  }
+
+  // Fetch replies for selected post
   const { data: repliesResponse, isLoading: isLoadingReplies } = useQuery({
     queryKey: ['forum-replies', selectedPost?.id],
-    queryFn: () => api<{ items: ForumReply[] }>(`/api/forum/posts/${selectedPost?.id}/replies`),
+    queryFn: () => forumApi.getReplies(Number(selectedPost!.id)),
     enabled: !!selectedPost?.id,
   });
 
-  const posts = postsResponse?.items ?? [];
-  const replies = repliesResponse?.items ?? [];
+  // Map ForumPostResponse to ForumPost format for UI compatibility
+  const posts: ForumPost[] = useMemo(() => {
+    if (!postsResponse || !('items' in postsResponse)) {
+      return [];
+    }
+    return (postsResponse.items || []).map((p: ForumPostResponse) => ({
+      id: String(p.id),
+      title: p.title,
+      content: p.content,
+      author: p.user_id, // Will need to fetch username separately if needed
+      authorId: p.user_id,
+      authorAvatar: '', // Empty string instead of undefined
+      tags: p.tags || [],
+      createdAt: new Date(p.created_at).getTime(),
+      views: p.views,
+      likes: p.likes,
+      replies: p.replies_count,
+      pinned: p.is_pinned,
+      isLiked: false, // Will need to check separately
+      gameSlug: slug || '',
+    }));
+  }, [postsResponse, slug]);
+
+  const replies: ForumReply[] = useMemo(() => {
+    return (repliesResponse || []).map((r: ForumReplyResponse) => ({
+      id: String(r.id),
+      postId: String(r.post_id),
+      author: r.user_id,
+      authorId: r.user_id,
+      authorAvatar: '', // Empty string instead of undefined
+      content: r.content,
+      createdAt: new Date(r.created_at).getTime(),
+      likes: r.likes,
+    }));
+  }, [repliesResponse]);
 
   // Extract all unique tags from posts
   const allTags = useMemo(() => {
@@ -101,50 +151,96 @@ export function GameForumPage() {
 
   const createPostMutation = useMutation({
     mutationFn: async () => {
-      if (!slug) throw new Error('Game slug is required');
-      return api<ForumPost>(`/api/games/${slug}/forum/posts`, {
-        method: 'POST',
-        body: JSON.stringify({
-          title: newPostTitle,
-          content: newPostContent,
-          tags: [],
-        }),
+      if (!gameId) throw new Error('Game ID is required');
+      return forumApi.createPost({
+        title: newPostTitle,
+        content: newPostContent,
+        tags: [],
+        game_id: gameId,
       });
     },
     onSuccess: () => {
       toast.success('Post created successfully!');
       setNewPostTitle('');
       setNewPostContent('');
-      queryClient.invalidateQueries({ queryKey: ['forum-posts', slug] });
+      queryClient.invalidateQueries({ queryKey: ['forum-posts', gameId] });
     },
     onError: (error: Error) => {
-      toast.error(`Failed to create post: ${error.message}`);
+      const msg = error.message || '';
+      if (msg.includes('Not authenticated') || msg.includes('Could not validate credentials')) {
+        toast.error('لطفاً دوباره لاگین کنید، نشست شما منقضی شده است.');
+        navigate('/login');
+      } else {
+        toast.error(`Failed to create post: ${msg}`);
+      }
     },
   });
 
   const createReplyMutation = useMutation({
     mutationFn: async () => {
       if (!selectedPost) throw new Error('Post is required');
-      return api<ForumReply>(`/api/forum/posts/${selectedPost.id}/replies`, {
-        method: 'POST',
-        body: JSON.stringify({
-          content: newReplyContent,
-        }),
+      const postId = parseInt(selectedPost.id);
+      if (isNaN(postId)) throw new Error('Invalid post ID');
+      return forumApi.createReply(postId, {
+        content: newReplyContent,
       });
     },
     onSuccess: () => {
       toast.success('Reply posted!');
       setNewReplyContent('');
       queryClient.invalidateQueries({ queryKey: ['forum-replies', selectedPost?.id] });
-      queryClient.invalidateQueries({ queryKey: ['forum-posts', slug] });
+      queryClient.invalidateQueries({ queryKey: ['forum-posts', gameId] });
     },
     onError: (error: Error) => {
-      toast.error(`Failed to post reply: ${error.message}`);
+      const msg = error.message || '';
+      if (msg.includes('Not authenticated') || msg.includes('Could not validate credentials')) {
+        toast.error('برای ارسال پاسخ باید وارد حساب کاربری شوید. لطفاً دوباره لاگین کنید.');
+        navigate('/login');
+      } else {
+        toast.error(`Failed to post reply: ${msg}`);
+      }
+    },
+  });
+
+  const likePostMutation = useMutation({
+    mutationFn: async (postId: number) => {
+      return forumApi.likePost(postId);
+    },
+    onSuccess: (data, postId) => {
+      queryClient.invalidateQueries({ queryKey: ['forum-posts', gameId] });
+      queryClient.invalidateQueries({ queryKey: ['forum-posts', gameId, postId] });
+    },
+    onError: (error: Error) => {
+      const msg = error.message || '';
+      if (msg.includes('Not authenticated') || msg.includes('Could not validate credentials')) {
+        toast.error('برای لایک‌کردن، ابتدا وارد حساب کاربری شوید.');
+        navigate('/login');
+      } else {
+        toast.error(`Failed to like post: ${msg}`);
+      }
     },
   });
 
   if (isLoadingGame) {
-    return <div className="space-y-4"><Skeleton className="h-32 w-full" /></div>;
+    return (
+      <div className="space-y-4 animate-fade-in">
+        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (isGameError || !game) {
+    return (
+      <div className="text-center py-20 animate-fade-in">
+        <AlertCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
+        <h2 className="text-2xl font-bold text-red-500 mb-2">Game not found</h2>
+        <p className="text-gray-400 mb-4">The game forum could not be loaded.</p>
+        <Button asChild className="bg-blood-500 hover:bg-blood-600">
+          <Link to="/store">Go to Store</Link>
+        </Button>
+      </div>
+    );
   }
 
   if (selectedPost) {
@@ -221,54 +317,9 @@ export function GameForumPage() {
                 size="sm" 
                 className={`gap-2 hover:bg-void-700 hover:border-blood-500/50 ${selectedPost.isLiked ? 'bg-blood-500/20 border-blood-500' : ''}`}
                 onClick={() => {
-                  const wasLiked = selectedPost.isLiked;
-                  const newLikes = wasLiked ? selectedPost.likes - 1 : selectedPost.likes + 1;
-                  
-                  // Optimistic update for list
-                  queryClient.setQueryData(['forum-posts', slug], (old: any) => {
-                    if (!old) return old;
-                    return {
-                      ...old,
-                      items: old.items.map((p: ForumPost) => 
-                        p.id === selectedPost.id 
-                          ? { ...p, isLiked: !wasLiked, likes: newLikes }
-                          : p
-                      ),
-                    };
-                  });
-
-                  // Optimistic update for selected post detail
-                  setSelectedPost(prev =>
-                    prev && prev.id === selectedPost.id
-                      ? { ...prev, isLiked: !wasLiked, likes: newLikes }
-                      : prev
-                  );
-                  
-                  api(`/api/forum/posts/${selectedPost.id}/like`, { method: 'POST' })
-                    .then(() => {
-                      queryClient.invalidateQueries({ queryKey: ['forum-posts', slug] });
-                      queryClient.invalidateQueries({ queryKey: ['forum-posts', slug, selectedPost.id] });
-                    })
-                    .catch(() => {
-                      // Revert on error
-                      queryClient.setQueryData(['forum-posts', slug], (old: any) => {
-                        if (!old) return old;
-                        return {
-                          ...old,
-                          items: old.items.map((p: ForumPost) => 
-                            p.id === selectedPost.id 
-                              ? { ...p, isLiked: wasLiked, likes: selectedPost.likes }
-                              : p
-                          ),
-                        };
-                      });
-                      setSelectedPost(prev =>
-                        prev && prev.id === selectedPost.id
-                          ? { ...prev, isLiked: wasLiked, likes: selectedPost.likes }
-                          : prev
-                      );
-                      toast.error('Failed to like post');
-                    });
+                  const postId = parseInt(selectedPost.id);
+                  if (isNaN(postId)) return;
+                  likePostMutation.mutate(postId);
                 }}
               >
                 <ThumbsUp className={`h-4 w-4 ${selectedPost.isLiked ? 'fill-current' : ''}`} /> 

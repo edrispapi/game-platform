@@ -107,7 +107,7 @@ export default ({ mode }: { mode: string }) => {
     },
     server: {
       allowedHosts: true,
-      port: 3000,
+      port: 3001,
       proxy: {
         // Proxy all /api requests to FastAPI Gateway
         '/api': {

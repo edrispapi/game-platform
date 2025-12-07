@@ -9,7 +9,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, Send, MoreVertical, Phone, Video, Info, UserMinus } from "lucide-react";
 import { WebRTCCall } from "@/components/WebRTCCall";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api-client";
+import { api, chatApi, friendsApi, onlineApi, getCurrentUserId } from "@/lib/api-client";
+import { getDefaultAvatarForUsername } from "@/config/gameAvatarIcons";
 import { Friend, ChatMessage, UserProfile } from "@shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDistanceToNow } from "date-fns";
@@ -33,6 +34,7 @@ import {
 export function ChatPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const currentUserId = getCurrentUserId() || '';
   const [messageText, setMessageText] = useState('');
   const [callType, setCallType] = useState<'audio' | 'video' | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -41,8 +43,12 @@ export function ChatPage() {
   const [blockUserDialogOpen, setBlockUserDialogOpen] = useState(false);
 
   const { data: friendsResponse } = useQuery({
-    queryKey: ['friends'],
-    queryFn: () => api<{ items: Friend[] }>('/api/friends'),
+    queryKey: ['friends', currentUserId],
+    queryFn: () =>
+      currentUserId
+        ? friendsApi.listFriends(currentUserId)
+        : Promise.resolve({ items: [] as Friend[] }),
+    enabled: !!currentUserId,
   });
 
   const { data: currentUser } = useQuery<UserProfile>({
@@ -52,9 +58,31 @@ export function ChatPage() {
 
   const friend = friendsResponse?.items.find(f => f.id === id);
 
+  // Fetch real-time friend status from online-service
+  const { data: friendStatus } = useQuery({
+    queryKey: ['friend-status', id],
+    queryFn: () =>
+      id && currentUserId
+        ? onlineApi.getStatus(id).catch(() => null)
+        : Promise.resolve(null),
+    enabled: !!id && !!currentUserId,
+    refetchInterval: 3000, // Poll every 3 seconds for real-time updates
+  });
+
   const { data: messages = [], isLoading: isLoadingMessages } = useQuery({
     queryKey: ['chat-messages', id],
-    queryFn: () => api<ChatMessage[]>(`/api/chats/${id}/messages`),
+    queryFn: () =>
+      id
+        ? chatApi.getDirectMessages(id).then((res) =>
+            res.map((m) => ({
+              id: m.id,
+              userId: m.sender_id,
+              text: m.content,
+              ts: new Date(m.created_at).getTime(), // Convert ISO string to timestamp
+              chatId: id, // Add required chatId field
+            } as ChatMessage)),
+          )
+        : Promise.resolve([] as ChatMessage[]),
     enabled: !!id,
     refetchInterval: 1000, // Poll for new messages every 1 second for real-time feel
   });
@@ -64,10 +92,16 @@ export function ChatPage() {
       if (!currentUser?.id) {
         throw new Error('User not authenticated');
       }
-      return api<ChatMessage>(`/api/chats/${id}/messages`, {
-        method: 'POST',
-        body: JSON.stringify({ userId: currentUser.id, text }),
-      });
+      if (!id) {
+        throw new Error('Chat peer ID not found');
+      }
+      return chatApi.sendDirectMessage(id, text).then((m) => ({
+        id: m.id,
+        userId: m.sender_id,
+        text: m.content,
+        ts: new Date(m.created_at).getTime(), // Convert ISO string to timestamp
+        chatId: id, // Add required chatId field
+      } as ChatMessage));
     },
     onSuccess: () => {
       setMessageText('');
@@ -104,7 +138,7 @@ export function ChatPage() {
     );
   }
 
-  const currentUserId = currentUser?.id || '';
+  const currentUserIdStr = currentUser?.id ? String(currentUser.id) : currentUserId || '';
 
   return (
     <div className="flex flex-col h-[calc(100vh-104px)] bg-void-900 rounded-lg border border-void-700 animate-fade-in overflow-hidden">
@@ -122,7 +156,10 @@ export function ChatPage() {
             </Link>
         </Button>
           <Avatar className="h-10 w-10 shrink-0 border-2 border-blood-500/50">
-            <AvatarImage src={friend.avatar} alt={friend.username} />
+            <AvatarImage
+              src={friend.avatar || getDefaultAvatarForUsername(friend.username)}
+              alt={friend.username}
+            />
             <AvatarFallback className="bg-blood-500/20 text-blood-400">
               {friend.username.substring(0, 2).toUpperCase()}
             </AvatarFallback>
@@ -135,17 +172,29 @@ export function ChatPage() {
               {friend.username}
             </Link>
             <div className="flex items-center gap-2">
-              <div className={`h-2 w-2 rounded-full ${
-                friend.status === 'Online' ? 'bg-green-400 animate-pulse' :
-                friend.status === 'In Game' ? 'bg-blue-400' : 'bg-gray-500'
-              }`} />
-              <p className={`text-sm truncate ${
-                friend.status === 'Online' ? 'text-green-400' :
-                friend.status === 'In Game' ? 'text-blue-400' : 'text-gray-400'
-              }`}>
-                {friend.status}
-                {friend.game && ` - Playing ${friend.game}`}
-              </p>
+              {(() => {
+                // Use real status from online-service if available, otherwise fallback to friend.status
+                const status = friendStatus?.status || friend.status || 'Offline';
+                const gameSlug = friendStatus?.game_slug || friend.game;
+                const isOnline = status === 'Online' || status === 'online';
+                const isInGame = status === 'In Game' || status === 'in_game' || gameSlug;
+                
+                return (
+                  <>
+                    <div className={`h-2 w-2 rounded-full ${
+                      isOnline ? 'bg-green-400 animate-pulse' :
+                      isInGame ? 'bg-blue-400' : 'bg-gray-500'
+                    }`} />
+                    <p className={`text-sm truncate ${
+                      isOnline ? 'text-green-400' :
+                      isInGame ? 'text-blue-400' : 'text-gray-400'
+                    }`}>
+                      {isInGame ? 'In Game' : isOnline ? 'Online' : 'Offline'}
+                      {gameSlug && ` - Playing ${gameSlug}`}
+                    </p>
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -227,8 +276,12 @@ export function ChatPage() {
                 >
                   {!isFromMe && (
                     <Avatar className="h-8 w-8 shrink-0">
-                      <AvatarImage src={friend.avatar} />
-                      <AvatarFallback>{friend.username.substring(0, 2).toUpperCase()}</AvatarFallback>
+                      <AvatarImage
+                        src={friend.avatar || getDefaultAvatarForUsername(friend.username)}
+                      />
+                      <AvatarFallback>
+                        {friend.username.substring(0, 2).toUpperCase()}
+                      </AvatarFallback>
                     </Avatar>
                   )}
                   <div className={`max-w-xs lg:max-w-md ${

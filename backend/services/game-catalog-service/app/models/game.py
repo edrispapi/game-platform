@@ -95,6 +95,7 @@ class Game(Base):
     header_image_url = Column(String(500), nullable=True)
     background_image_url = Column(String(500), nullable=True)
     capsule_image_url = Column(String(500), nullable=True)
+    icon_url = Column(String(500), nullable=True)  # Avatar/Icon (1:1 square)
     screenshots = Column(ARRAY(String), nullable=True)
     movies = Column(ARRAY(String), nullable=True)
 

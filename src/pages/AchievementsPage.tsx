@@ -1,8 +1,8 @@
 'use client';
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api-client";
-import { Achievement, AchievementRarity } from "@shared/types";
+import { achievementsApi } from "@/lib/api-client";
+import { AchievementRarity } from "@shared/types";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -21,15 +21,14 @@ export function AchievementsPage() {
   const [rarityFilter, setRarityFilter] = useState<AchievementRarity | "all">("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
-  const { data: achievementsResponse, isLoading, isError } = useQuery({
+  // Always default to an empty array so we don't crash before data loads
+  const { data: achievements = [], isLoading, isError } = useQuery({
     queryKey: ["achievements"],
-    queryFn: () => api<{ items: Achievement[] }>("/api/achievements"),
+    queryFn: () => achievementsApi.list(),
   });
 
-  const achievements = achievementsResponse?.items ?? [];
-
   const stats = useMemo(() => {
-    if (!achievements.length) {
+    if (!achievements || achievements.length === 0) {
       return { total: 0, unlocked: 0, completion: 0 };
     }
     const unlocked = achievements.filter((a) => a.unlocked).length;
@@ -41,7 +40,7 @@ export function AchievementsPage() {
   }, [achievements]);
 
   const filtered = useMemo(() => {
-    return achievements.filter((ach) => {
+    return (achievements || []).filter((ach) => {
       if (rarityFilter !== "all" && ach.rarity !== rarityFilter) return false;
       if (statusFilter === "unlocked" && !ach.unlocked) return false;
       if (statusFilter === "locked" && ach.unlocked) return false;

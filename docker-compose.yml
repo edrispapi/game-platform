@@ -241,6 +241,7 @@ services:
       WORKSHOP_DATABASE_URL: postgresql://crimson:crimson123@postgres:5432/workshop_service
       WORKSHOP_STORAGE_PATH: /data/workshop_uploads
       WORKSHOP_MAX_FILE_MB: 500
+      SECRET_KEY: 359919ea6e72b1e135c192f503cbc752f3eb09aa3109b9136b30ffffa6f5152a
       ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
     depends_on:
       postgres:
@@ -251,6 +252,24 @@ services:
       - crimson-net
     volumes:
       - workshop-storage:/data/workshop_uploads
+
+  forum-service:
+    build:
+      context: ./backend/services/forum-service
+    container_name: crimson-forum-service
+    environment:
+      <<: *minio-env
+      FORUM_DATABASE_URL: postgresql://crimson:crimson123@postgres:5432/forum_service
+      SECRET_KEY: 359919ea6e72b1e135c192f503cbc752f3eb09aa3109b9136b30ffffa6f5152a
+      JWT_ALGORITHM: HS256
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "13015:8015"
+    networks:
+      - crimson-net
 
   achievement-service:
     build:
@@ -331,6 +350,7 @@ services:
       RECOMMENDATION_SERVICE_URL: http://recommendation-service:8010
       ACHIEVEMENT_SERVICE_URL: http://achievement-service:8011
       WORKSHOP_SERVICE_URL: http://workshop-service:8014
+      FORUM_SERVICE_URL: http://forum-service:8015
       FRIENDS_CHAT_SERVICE_URL: http://friends-chat-service:8013
       REDIS_URL: redis://redis:6379/0
       ALLOWED_ORIGINS: http://localhost:3000,http://frontend:3000

@@ -14,6 +14,7 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isOAuthLoading, setIsOAuthLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -44,6 +45,63 @@ export function LoginPage() {
       setError((err as Error).message || 'Login failed. Please check your credentials.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleOAuthLogin = async (provider: 'google' | 'discord' | 'steam') => {
+    setIsOAuthLoading(provider);
+    setError(null);
+    
+    try {
+      // Prompt user for email (OAuth providers typically provide this)
+      const userEmail = prompt(`Enter your ${provider.charAt(0).toUpperCase() + provider.slice(1)} email address:`);
+      if (!userEmail || !userEmail.includes('@')) {
+        setError('Please enter a valid email address.');
+        setIsOAuthLoading(null);
+        return;
+      }
+
+      // Generate a unique provider user ID (in production, this comes from OAuth provider)
+      const providerUserId = `${provider}_${userEmail.replace('@', '_').replace(/\./g, '_')}_${Date.now()}`;
+      
+      // Extract username from email or prompt for it
+      const emailUsername = userEmail.split('@')[0];
+      const username = prompt(`Enter a username (or press OK to use "${emailUsername}"):`) || emailUsername;
+      
+      // Call OAuth login endpoint - no password required!
+      const response = await authApi.oauthLogin({
+        provider,
+        provider_user_id: providerUserId,
+        email: userEmail,
+        username: username,
+        full_name: username,
+        avatar_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=4285f4&color=fff`,
+        remember_me: true,
+      });
+      
+      // Store auth token and user info
+      setAuthToken(response.access_token);
+      setCurrentUserId(String(response.user.id));
+      
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('crimson-username', response.user.username);
+        window.localStorage.setItem('crimson-email', response.user.email);
+        // Store token expiration time (1 day from now)
+        const expirationTime = Date.now() + (24 * 60 * 60 * 1000); // 1 day in milliseconds
+        window.localStorage.setItem('crimson-token-expires', String(expirationTime));
+      }
+      
+      navigate('/store');
+    } catch (err: any) {
+      console.error(`${provider} OAuth error:`, err);
+      const errorMessage = err?.message || err?.response?.data?.detail || 'Login failed';
+      if (errorMessage.includes('expired') || errorMessage.includes('منقضی')) {
+        setError('لطفاً دوباره لاگین کنید، نشست شما منقضی شده است. / Please log in again, your session has expired.');
+      } else {
+        setError(`${provider.charAt(0).toUpperCase() + provider.slice(1)} login failed: ${errorMessage}`);
+      }
+    } finally {
+      setIsOAuthLoading(null);
     }
   };
   
@@ -112,9 +170,54 @@ export function LoginPage() {
               </div>
             </div>
             <div className="grid grid-cols-3 gap-2 w-full">
-              <Button variant="outline" className="border-void-600 hover:bg-void-700" type="button">Google</Button>
-              <Button variant="outline" className="border-void-600 hover:bg-void-700" type="button">Discord</Button>
-              <Button variant="outline" className="border-void-600 hover:bg-void-700" type="button">Steam</Button>
+              <Button
+                variant="outline"
+                className="border-void-600 hover:bg-void-700"
+                type="button"
+                onClick={() => handleOAuthLogin('google')}
+                disabled={isLoading || isOAuthLoading !== null}
+              >
+                {isOAuthLoading === 'google' ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  'Google'
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                className="border-void-600 hover:bg-void-700"
+                type="button"
+                onClick={() => handleOAuthLogin('discord')}
+                disabled={isLoading || isOAuthLoading !== null}
+              >
+                {isOAuthLoading === 'discord' ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  'Discord'
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                className="border-void-600 hover:bg-void-700"
+                type="button"
+                onClick={() => handleOAuthLogin('steam')}
+                disabled={isLoading || isOAuthLoading !== null}
+              >
+                {isOAuthLoading === 'steam' ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  'Steam'
+                )}
+              </Button>
             </div>
             <p className="text-sm text-gray-400 text-center">
               Don't have an account? <Link to="/register" className="font-semibold text-blood-500 hover:underline">Sign up</Link>

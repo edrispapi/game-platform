@@ -30,7 +30,16 @@ export function WebGLImage({ src, alt, className = '', fallback, onLoad, onError
 
     setWebglSupported(true);
     const image = new Image();
-    image.crossOrigin = 'anonymous';
+    // Only set crossOrigin for external URLs that need it
+    // Steam CDN URLs should work without CORS issues
+    if (src.startsWith('http://') || src.startsWith('https://')) {
+      // Try with crossOrigin, but don't fail if it doesn't work
+      try {
+        image.crossOrigin = 'anonymous';
+      } catch (e) {
+        // Ignore CORS errors for external images
+      }
+    }
 
     image.onload = () => {
       try {
@@ -172,8 +181,11 @@ export function WebGLImage({ src, alt, className = '', fallback, onLoad, onError
     // Handle data URLs and regular URLs
     if (src.startsWith('data:')) {
       image.src = src;
+    } else if (src.startsWith('http://') || src.startsWith('https://')) {
+      // For external URLs, try original first (Steam CDN URLs are reliable)
+      image.src = src;
     } else {
-      // Try WebP first, fallback to original
+      // For relative paths, try WebP first, fallback to original
       const webpSrc = src.replace(/\.(jpg|jpeg|png)$/i, '.webp');
       image.src = webpSrc;
       
@@ -205,19 +217,21 @@ export function WebGLImage({ src, alt, className = '', fallback, onLoad, onError
           src={error && fallback ? fallback : src}
           alt={alt}
           className={`${className} ${loading ? 'opacity-0' : 'opacity-100'} transition-opacity`}
+          loading="lazy"
           onLoad={() => {
             setLoading(false);
             onLoad?.();
           }}
-          onError={() => {
+          onError={(e) => {
+            // If main image fails and we have a fallback, try it
+            if (fallback && src !== fallback && !error) {
+              const target = e.currentTarget;
+              target.src = fallback;
+              return;
+            }
             setError(true);
             setLoading(false);
             onError?.();
-            if (fallback && src !== fallback) {
-              // Try fallback
-              const img = document.createElement('img');
-              img.src = fallback;
-            }
           }}
         />
         {error && !fallback && (

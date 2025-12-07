@@ -17,18 +17,25 @@ from passlib.context import CryptContext
 
 from .config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Use pbkdf2_sha256 for password hashing (no 72-byte bcrypt limitation)
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=settings.TOKEN_URL)
 
 
 def get_password_hash(password: str) -> str:
-    """Hash plain text password using bcrypt."""
+    """Hash plain text password using bcrypt_sha256."""
     return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against a stored hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    """Verify a password against a stored hash.
+
+    Any backend / parsing error is treated as invalid credentials, not 500.
+    """
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except Exception:
+        return False
 
 
 def create_access_token(

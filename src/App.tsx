@@ -1,4 +1,3 @@
-import '@/lib/errorReporter';
 import { enableMapSet } from "immer";
 enableMapSet();
 import React from 'react';
@@ -18,6 +17,7 @@ import { StorePage } from '@/pages/StorePage';
 import { LibraryPage } from '@/pages/LibraryPage';
 import { GameDetailPage } from '@/pages/GameDetailPage';
 import { ProfilePage } from '@/pages/ProfilePage';
+import { UserProfilePage } from '@/pages/UserProfilePage';
 import { FriendsPage } from '@/pages/FriendsPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { CartPage } from '@/pages/CartPage';
@@ -27,11 +27,9 @@ import { ChatPage } from '@/pages/ChatPage';
 import { AboutPage } from '@/pages/AboutPage';
 import { ContactPage } from '@/pages/ContactPage';
 import { AchievementsPage } from '@/pages/AchievementsPage';
-import { PublicProfilePage } from '@/pages/PublicProfilePage';
 import { GameForumPage } from '@/pages/GameForumPage';
 import { GameWorkshopPage } from '@/pages/GameWorkshopPage';
 import { SearchPage } from '@/pages/SearchPage';
-import { WebGLTestPage } from '@/pages/WebGLTestPage';
 import { Toaster } from '@/components/ui/sonner';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { useUserStatus } from '@/hooks/use-user-status';
@@ -43,7 +41,8 @@ function UserStatusManager() {
   useUserStatus();
   return null;
 }
-const router = createBrowserRouter([
+const router = createBrowserRouter(
+  [
   {
     path: "/",
     element: <HomePage />,
@@ -81,17 +80,23 @@ const router = createBrowserRouter([
       { path: "/game/:slug/workshop", element: <GameWorkshopPage /> },
       { path: "/profile", element: <ProfilePage /> },
       { path: "/profile/achievements", element: <AchievementsPage /> },
-      { path: "/user/:username", element: <PublicProfilePage /> },
+      { path: "/user/:username", element: <UserProfilePage /> },
       { path: "/friends", element: <FriendsPage /> },
       { path: "/friends/chat/:id", element: <ChatPage /> },
       { path: "/settings", element: <SettingsPage /> },
       { path: "/cart", element: <CartPage /> },
       { path: "/checkout", element: <CheckoutPage /> },
       { path: "/notifications", element: <NotificationsPage /> },
-      { path: "/webgl-test", element: <WebGLTestPage /> },
     ],
   },
-]);
+],
+  {
+    future: {
+      v7_startTransition: true,
+      v7_relativeSplatPath: true,
+    },
+  }
+);
 export function App() {
   return (
     <ErrorBoundary>

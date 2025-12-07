@@ -6,8 +6,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ShoppingCart, Check, Star, MessageSquare, Construction, Play, Image as ImageIcon, AlertCircle, Download } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api-client";
-import { Game, GameReview } from "@shared/types";
+import { gamesApi, reviewsApi, getCurrentUserId } from "@/lib/api-client";
+import type { GameResponse as CatalogGame, ReviewResponse } from "@/lib/api-client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCartStore } from "@/stores/cart-store";
 import { toast } from "sonner";
@@ -22,6 +22,42 @@ import { UserLink } from "@/components/UserLink";
 import { GAME_TRAILERS, getYoutubeThumbnail } from "@shared/trailers";
 import { WebGLImage } from "@/components/WebGLImage";
 import { CommentReactions } from "@/components/CommentReactions";
+import { motion } from "framer-motion";
+import type { Game } from "@shared/types";
+
+function mapCatalogGameToGame(apiGame: CatalogGame): Game {
+  const tags = (apiGame.tags || []) as any[];
+
+  // pc_requirements is stored in backend JSONB but not surfaced in TS type; treat as any.
+  const requirements = (apiGame as any).pc_requirements as any;
+  const min = (requirements && requirements.minimum) || {};
+
+  return {
+    id: String(apiGame.id),
+    slug: apiGame.slug || apiGame.title.toLowerCase().replace(/\s+/g, "-"),
+    title: apiGame.title,
+    description: apiGame.description || apiGame.short_description || "",
+    price: apiGame.price,
+    coverImage:
+      apiGame.cover_image_url ||
+      apiGame.banner_image_url ||
+      "/images/default-cover.svg",
+    bannerImage:
+      apiGame.banner_image_url ||
+      "/images/default-banner.svg",
+    tags,
+    screenshots: apiGame.screenshots || [],
+    videos: apiGame.movies || [],
+    reviews: [],
+    requirements: {
+      os: min.os || "",
+      processor: min.processor || "",
+      memory: min.memory || "",
+      graphics: min.graphics || "",
+      storage: min.storage || "",
+    },
+  };
+}
 
 // Screenshot Card Component with Error Handling
 function ScreenshotCard({ imageUrl, gameTitle, index, fallbackThumbnail }: { 
@@ -106,24 +142,24 @@ function ScreenshotCard({ imageUrl, gameTitle, index, fallbackThumbnail }: {
   );
 }
 
-function ReviewCard({ review }: { review: GameReview }) {
+function ReviewCard({ review }: { review: ReviewResponse & { username?: string; avatar_url?: string } }) {
   const [expanded, setExpanded] = useState(false);
-  const lines = review.comment.split('\n');
-  const isLong = lines.length > 13 || review.comment.length > 800;
+  const lines = (review.content || "").split('\n');
+  const isLong = lines.length > 13 || (review.content || "").length > 800;
   const displayComment = !isLong || expanded
-    ? review.comment
+    ? review.content
     : lines.slice(0, 13).join('\n');
 
   return (
     <CardContent className="p-6 flex gap-4">
       <Avatar>
-        <AvatarImage src={review.avatar} />
-        <AvatarFallback>{review.username.substring(0, 2).toUpperCase()}</AvatarFallback>
+        <AvatarImage src={review.avatar_url} />
+        <AvatarFallback>{(review.username || "U").substring(0, 2).toUpperCase()}</AvatarFallback>
       </Avatar>
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-3">
-          <UserLink username={review.username} className="font-bold">
-            {review.username}
+          <UserLink username={review.username || "Player"} className="font-bold">
+            {review.username || "Player"}
           </UserLink>
           <div className="flex items-center">
             {[...Array(5)].map((_, i) => (
@@ -135,7 +171,7 @@ function ReviewCard({ review }: { review: GameReview }) {
           </div>
         </div>
         <p className="text-sm text-gray-500">
-          {formatDistanceToNow(new Date(review.createdAt), { addSuffix: true, includeSeconds: true })}
+          {formatDistanceToNow(new Date(review.created_at), { addSuffix: true, includeSeconds: true })}
         </p>
         <p className="mt-2 text-gray-300 whitespace-pre-wrap break-words">
           {displayComment}
@@ -166,38 +202,90 @@ export function GameDetailPage() {
   const cartItems = useCartStore(s => s.items);
   const [newReview, setNewReview] = useState({ rating: 0, comment: '' });
   const [showAllReviews, setShowAllReviews] = useState(false);
+  const currentUserId = getCurrentUserId();
+
+  // Fetch game by slug using dedicated endpoint
   const { data: game, isLoading: isLoadingGame, isError: isGameError } = useQuery({
-    queryKey: ['game', slug],
-    queryFn: () => api<Game>(`/api/games/${slug}`),
+    queryKey: ['game-by-slug', slug],
+    queryFn: () => {
+      if (!slug) throw new Error('Slug is required');
+      return gamesApi.getBySlug(slug);
+    },
     enabled: !!slug,
+    retry: 1,
   });
-  const { data: reviewsResponse, isLoading: isLoadingReviews } = useQuery({
-    queryKey: ['reviews', slug],
-    queryFn: () => api<{ items: GameReview[] }>(`/api/games/${slug}/reviews`),
-    enabled: !!slug,
+
+  // Fetch aggregate review stats for this game (dynamic, from review-service)
+  const { data: reviewStats } = useQuery({
+    queryKey: ['review-stats', game?.id],
+    queryFn: async () => {
+      try {
+        return await reviewsApi.getStatsForGame(String(game!.id));
+      } catch (err) {
+        console.warn('Review stats failed:', err);
+        return null;
+      }
+    },
+    enabled: !!game,
+    staleTime: 2 * 60 * 1000,
   });
-  const reviews = reviewsResponse?.items ?? [];
-  const totalReviews = reviews.length;
+
+  const { data: reviews = [], isLoading: isLoadingReviews } = useQuery({
+    queryKey: ['reviews', game?.id],
+    queryFn: async () => {
+      try {
+        return await reviewsApi.getForGame(String(game!.id));
+      } catch (err) {
+        console.warn('Reviews fetch failed:', err);
+        return [];
+      }
+    },
+    enabled: !!game,
+  });
+  const totalReviews = reviewStats?.total_reviews ?? reviews.length ?? 0;
+  // Events featured in – currently derived from game metadata if present, otherwise 0
+  const eventsFeaturedIn: number =
+    (game as any)?.metadata?.events_featured_in ??
+    (game as any)?.metadata?.eventsFeaturedIn ??
+    0;
+  const averageRating =
+    reviewStats?.average_rating ??
+    (reviews.length > 0
+      ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+      : 0);
   const visibleReviews = showAllReviews ? reviews : reviews.slice(0, 10);
   const reviewMutation = useMutation({
-    mutationFn: (review: Omit<GameReview, 'id' | 'userId' | 'username' | 'createdAt'>) =>
-      api<GameReview>(`/api/games/${slug}/reviews`, {
-        method: 'POST',
-        body: JSON.stringify(review),
+    mutationFn: (review: { rating: number; comment: string }) =>
+      reviewsApi.create({
+        game_id: String(game!.id),
+        user_id: currentUserId || "",
+        rating: review.rating,
+        content: review.comment,
+        is_recommended: review.rating >= 4,
       }),
     onSuccess: () => {
       toast.success("Review submitted successfully!");
       setNewReview({ rating: 0, comment: '' });
-      queryClient.invalidateQueries({ queryKey: ['reviews', slug] });
+      // Refresh individual reviews and aggregate stats
+      queryClient.invalidateQueries({ queryKey: ['reviews', game?.id] });
+      queryClient.invalidateQueries({ queryKey: ['review-stats', game?.id] });
     },
-    onError: (error) => {
-      toast.error(`Failed to submit review: ${error.message}`);
+    onError: (error: any) => {
+      const errorMessage = error?.message || error?.response?.data?.detail || 'Unknown error';
+      if (errorMessage.includes('Not authenticated') || errorMessage.includes('Could not validate credentials')) {
+        toast.error('Please log in to submit a review.');
+      } else if (errorMessage.includes('user_id')) {
+        toast.error('User ID is required. Please log in and try again.');
+      } else {
+        toast.error(`Failed to submit review: ${errorMessage}`);
+      }
+      console.error('Review submission error:', error);
     },
   });
-  const isInCart = game ? cartItems.some(item => item.id === game.id) : false;
+  const isInCart = game ? cartItems.some(item => item.id === String(game.id)) : false;
   const handleAddToCart = () => {
     if (game) {
-      addToCart(game);
+      addToCart(mapCatalogGameToGame(game as CatalogGame));
       toast.success(`${game.title} added to cart!`);
     }
   };
@@ -224,18 +312,27 @@ export function GameDetailPage() {
     );
   }
   if (isGameError || !game) {
-    return <div className="text-center py-20 text-red-500">Game not found or failed to load.</div>;
+    return (
+      <div className="text-center py-20 animate-fade-in">
+        <div className="max-w-md mx-auto">
+          <AlertCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-red-500 mb-2">Game not found</h2>
+          <p className="text-gray-400 mb-4">
+            {isGameError ? "Failed to load game details." : `Game "${slug}" could not be found.`}
+          </p>
+          <Button asChild className="bg-blood-500 hover:bg-blood-600">
+            <Link to="/store">Go to Store</Link>
+          </Button>
+        </div>
+      </div>
+    );
   }
   const fallbackTrailer = slug ? GAME_TRAILERS[slug] : undefined;
-  const trailerUrl = (game.videos && game.videos[0]) || fallbackTrailer;
-  const fallbackScreenshot = trailerUrl ? getYoutubeThumbnail(trailerUrl) : null;
-  const screenshots = game.screenshots.length
-    ? game.screenshots
-    : fallbackScreenshot
-      ? [fallbackScreenshot]
-      : [];
-  
-  // Helper to get YouTube thumbnail from URL
+  // Prefer backend movies array if present, otherwise fallback to static map
+  const trailerUrl =
+    (Array.isArray((game as any).movies) && (game as any).movies[0]) || fallbackTrailer;
+
+  // Fallback screenshot: YouTube thumbnail, then banner/cover image
   const getYoutubeThumbnailFromUrl = (url: string) => {
     if (!url) return null;
     const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/);
@@ -244,29 +341,93 @@ export function GameDetailPage() {
     }
     return null;
   };
-  
+
   const trailerThumbnail = trailerUrl ? getYoutubeThumbnailFromUrl(trailerUrl) : null;
+  const fallbackScreenshot =
+    trailerThumbnail ||
+    (game as any).banner_image_url ||
+    (game as any).cover_image_url ||
+    null;
+
+  const screenshots =
+    Array.isArray((game as any).screenshots) && (game as any).screenshots.length > 0
+      ? ((game as any).screenshots as string[])
+      : fallbackScreenshot
+      ? [fallbackScreenshot]
+      : [];
   return (
     <div className="animate-fade-in">
       {/* Hero Section */}
-      <div className="relative h-[450px] rounded-lg overflow-hidden mb-8">
-        <WebGLImage 
-          src={game.bannerImage} 
-          alt={game.title} 
-          className="w-full h-full object-cover"
-          fallback={game.coverImage}
+      <motion.div
+        className="relative h-[450px] rounded-lg overflow-hidden mb-8 group"
+        initial={{ opacity: 0, scale: 0.98, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
+      >
+        {/* Use regular img for hero banner - faster than WebGL for large images */}
+        <img
+          src={
+            // Prefer wide hero/banner images from catalog service
+            (game as any).banner_image_url ||
+            (game as any).background_image_url ||
+            (game as any).cover_image_url ||
+            '/images/default-banner.svg'
+          }
+          alt={game.title}
+          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+          loading="eager"
+          decoding="async"
+          onError={(e) => {
+            const img = e.target as HTMLImageElement;
+            if (img.dataset.fallbackApplied) return;
+            img.dataset.fallbackApplied = '1';
+            img.src = '/images/default-banner.svg';
+          }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-void-950 via-void-950/50 to-transparent" />
-        <div className="absolute bottom-0 left-0 p-8 text-white">
-          <h1 className="font-orbitron text-5xl font-black mb-2">{game.title}</h1>
-          <div className="flex items-center gap-2">
+        {/* Animated gradient overlay similar to auth/login atmosphere */}
+        <div className="absolute inset-0 bg-gradient-to-t from-void-950 via-void-950/60 to-transparent pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-r from-blood-600/10 via-transparent to-blood-600/10 mix-blend-screen opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+        <div className="absolute bottom-0 left-0 p-8 text-white space-y-3">
+          <h1 className="font-orbitron text-4xl sm:text-5xl font-black mb-1 drop-shadow-lg">
+            {game.title}
+          </h1>
+          <div className="flex flex-wrap items-center gap-2">
             {game.tags.map((tag) => (
-              <Badge key={tag} variant="secondary" className="bg-white/10 text-white backdrop-blur-sm">{tag}</Badge>
+              <Badge
+                key={tag}
+                variant="secondary"
+                className="bg-black/40 border border-white/10 text-white backdrop-blur-sm"
+              >
+                {tag}
+              </Badge>
             ))}
           </div>
+          {totalReviews > 0 && (
+            <div className="flex items-center gap-3 text-sm text-gray-200 mt-2">
+              <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-black/50 border border-blood-400/40 backdrop-blur-sm">
+                <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
+                <span className="font-semibold">
+                  {averageRating.toFixed(1)}
+                </span>
+                <span className="text-xs text-gray-300">
+                  ({totalReviews.toLocaleString()} reviews)
+                </span>
+              </div>
+            </div>
+          )}
         </div>
-        <div className="absolute bottom-8 right-8 flex items-center gap-4">
-            <p className="font-orbitron text-3xl font-bold text-white">${game.price}</p>
+        <div className="absolute bottom-6 right-6 flex flex-col items-end gap-4">
+          {/* Events Featured In */}
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/60 border border-void-600/70 backdrop-blur-sm text-xs text-gray-200">
+            <span className="font-semibold text-blood-400">Events Featured In</span>
+            <span className="px-2 py-0.5 rounded-full bg-blood-500/20 text-blood-300 font-mono">
+              {eventsFeaturedIn}
+            </span>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <p className="font-orbitron text-3xl font-bold text-white drop-shadow-[0_0_20px_rgba(0,0,0,0.7)]">
+              ${game.price}
+            </p>
             <Button
               size="lg"
               className="bg-blood-500 hover:bg-blood-600 text-white text-lg font-bold shadow-blood-glow disabled:bg-green-600 disabled:opacity-100"
@@ -285,8 +446,9 @@ export function GameDetailPage() {
                 </>
               )}
             </Button>
+          </div>
         </div>
-      </div>
+      </motion.div>
       {/* Main Content */}
       <Tabs defaultValue="description" className="w-full">
         <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 bg-void-800 border-void-700 h-10 sm:h-9">
@@ -411,20 +573,78 @@ export function GameDetailPage() {
             </div>
         </TabsContent>
         <TabsContent value="requirements" className="py-6">
-            <Accordion type="single" collapsible className="w-full" defaultValue="requirements">
-                <AccordionItem value="requirements" className="border-void-700">
-                    <AccordionTrigger className="text-xl font-orbitron hover:no-underline">Minimum System Requirements</AccordionTrigger>
-                    <AccordionContent>
-                        <ul className="list-disc pl-5 space-y-2 text-gray-400">
-                            <li><strong>OS:</strong> {game.requirements.os}</li>
-                            <li><strong>Processor:</strong> {game.requirements.processor}</li>
-                            <li><strong>Memory:</strong> {game.requirements.memory}</li>
-                            <li><strong>Graphics:</strong> {game.requirements.graphics}</li>
-                            <li><strong>Storage:</strong> {game.requirements.storage}</li>
-                        </ul>
-                    </AccordionContent>
-                </AccordionItem>
-            </Accordion>
+          <Accordion type="single" collapsible className="w-full" defaultValue="requirements">
+            <AccordionItem value="requirements" className="border-void-700">
+              <AccordionTrigger className="text-xl font-orbitron hover:no-underline">
+                Minimum System Requirements
+              </AccordionTrigger>
+              <AccordionContent>
+                {(() => {
+                  // Get requirements from API response (pc_requirements is a JSONB field)
+                  const apiGame = game as any;
+                  const pcReq = apiGame.pc_requirements?.minimum;
+                  
+                  if (!pcReq || (typeof pcReq === 'object' && Object.keys(pcReq).length === 0)) {
+                    return (
+                      <p className="text-gray-500 text-sm">
+                        System requirements are not available for this game yet.
+                      </p>
+                    );
+                  }
+                  
+                  const os = pcReq.os || '';
+                  const processor = pcReq.processor || '';
+                  const memory = pcReq.memory || '';
+                  const graphics = pcReq.graphics || '';
+                  const storage = pcReq.storage || '';
+                  const directx = pcReq.directx || '';
+                  
+                  if (!os && !processor && !memory && !graphics && !storage) {
+                    return (
+                      <p className="text-gray-500 text-sm">
+                        System requirements are not available for this game yet.
+                      </p>
+                    );
+                  }
+                  
+                  return (
+                    <ul className="list-disc pl-5 space-y-2 text-gray-400">
+                      {os && (
+                        <li>
+                          <strong>OS:</strong> {os}
+                        </li>
+                      )}
+                      {processor && (
+                        <li>
+                          <strong>Processor:</strong> {processor}
+                        </li>
+                      )}
+                      {memory && (
+                        <li>
+                          <strong>Memory:</strong> {memory}
+                        </li>
+                      )}
+                      {graphics && (
+                        <li>
+                          <strong>Graphics:</strong> {graphics}
+                        </li>
+                      )}
+                      {directx && (
+                        <li>
+                          <strong>DirectX:</strong> {directx}
+                        </li>
+                      )}
+                      {storage && (
+                        <li>
+                          <strong>Storage:</strong> {storage}
+                        </li>
+                      )}
+                    </ul>
+                  );
+                })()}
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </TabsContent>
         <TabsContent value="reviews" className="py-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">

@@ -58,11 +58,14 @@ SERVICE_ROUTES = {
     "/api/v1/recommendations": RECOMMENDATION_SERVICE_URL,
     "/api/v1/achievements": ACHIEVEMENT_SERVICE_URL,
     "/api/v1/friends": FRIENDS_CHAT_SERVICE_URL,
-    "/api/v1/workshop": os.getenv("WORKSHOP_SERVICE_URL", "http://localhost:8014"),
+    # Use internal Docker service names by default; can be overridden via env vars
+    "/api/v1/workshop": os.getenv("WORKSHOP_SERVICE_URL", "http://workshop-service:8014"),
+    "/api/v1/forum": os.getenv("FORUM_SERVICE_URL", "http://forum-service:8015"),
 }
 
 # Rate limiting configuration
-RATE_LIMIT_PER_MINUTE = 60
+# Make this configurable via env var so local/dev can use a much higher limit.
+RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "600"))
 
 def get_rate_limit_key(request: Request) -> str:
     """Get rate limiting key based on client IP"""

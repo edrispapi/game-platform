@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { UserPlus, Search, X, Sparkles, Users, Clock, Shuffle, ExternalLink, Gamepad2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, friendsApi, getCurrentUserId } from "@/lib/api-client";
+import { api, friendsApi, gamesApi, getCurrentUserId, getAuthToken } from "@/lib/api-client";
 import { Friend, Game, FriendRequest, UserProfile } from "@shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
@@ -15,6 +15,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { useState, useMemo } from "react";
 import { UserLink } from "@/components/UserLink";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { getDefaultAvatarForUsername } from "@/config/gameAvatarIcons";
 
 // Modern User Card Component for Add Friend Dialog
 function UserCard({ 
@@ -58,7 +60,10 @@ function UserCard({
               user.status === 'Offline' && "bg-gray-500/10"
             )} />
             <Avatar className="h-12 w-12 ring-2 ring-void-600 group-hover/profile:ring-blood-500/50 transition-all duration-300">
-              <AvatarImage src={user.avatar} className="object-cover" />
+              <AvatarImage
+                src={user.avatar || getDefaultAvatarForUsername(user.username)}
+                className="object-cover"
+              />
               <AvatarFallback className="bg-gradient-to-br from-blood-600 to-crimson-700 text-white font-bold">
                 {user.username?.substring(0, 2).toUpperCase()}
               </AvatarFallback>
@@ -85,21 +90,31 @@ function UserCard({
             
             {showStats ? (
               <div className="flex items-center gap-3 text-xs text-gray-400 mt-1">
-                {user.hoursPlayed > 0 && (
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {user.hoursPlayed.toLocaleString()}h
-                  </span>
-                )}
-                {user.friendsCount > 0 && (
-                  <span className="flex items-center gap-1">
-                    <Users className="w-3 h-3" />
-                    {user.friendsCount}
-                  </span>
-                )}
-                {!user.hoursPlayed && !user.friendsCount && (
-                  <span className="text-gray-500 italic">New player</span>
-                )}
+                {/* Always show status */}
+                <span className={cn(
+                  "flex items-center gap-1 px-1.5 py-0.5 rounded",
+                  user.status === 'Online' && "text-emerald-400 bg-emerald-500/10",
+                  user.status === 'In Game' && "text-violet-400 bg-violet-500/10",
+                  user.status === 'Offline' && "text-gray-400 bg-gray-500/10"
+                )}>
+                  <div className={cn(
+                    "w-1.5 h-1.5 rounded-full",
+                    user.status === 'Online' && "bg-emerald-400",
+                    user.status === 'In Game' && "bg-violet-400",
+                    user.status === 'Offline' && "bg-gray-400"
+                  )} />
+                  {user.status || 'Offline'}
+                </span>
+                {/* Show hours played (even if 0) */}
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  {(user.hoursPlayed ?? 0).toLocaleString()}h
+                </span>
+                {/* Show friends count (even if 0) */}
+                <span className="flex items-center gap-1">
+                  <Users className="w-3 h-3" />
+                  {user.friendsCount ?? 0}
+                </span>
               </div>
             ) : (
               <p className="text-xs text-gray-400 truncate mt-0.5">
@@ -281,42 +296,100 @@ export function FriendsPage() {
   const [recommendSort, setRecommendSort] = useState<'hours' | 'friends' | 'random'>('hours');
   const queryClient = useQueryClient();
   
-  const { data: friendsResponse, isLoading, isError } = useQuery({
-    queryKey: ['friends'],
-    queryFn: () => api<{ items: Friend[] }>('/api/friends'),
-    refetchInterval: 3000, // Poll for status updates every 3 seconds for real-time feel
-  });
-  const { data: gamesResponse } = useQuery({
-    queryKey: ['games'],
-    queryFn: () => api<{ items: Game[] }>('/api/games'),
-  });
-  
-  // Search users
-  const { data: searchResults, isLoading: isSearching } = useQuery({
-    queryKey: ['user-search', searchQuery],
-    queryFn: () => api<{ items: UserProfile[] }>(`/api/users/search?q=${encodeURIComponent(searchQuery)}`),
-    enabled: searchQuery.length >= 2 && addFriendOpen,
+  const currentUserId = getCurrentUserId();
+  const hasToken = !!getAuthToken();
+
+  const { data: friendsResponse, isLoading, isError, error } = useQuery({
+    queryKey: ['friends', currentUserId],
+    queryFn: async () => {
+      if (!currentUserId || !hasToken) return { items: [] };
+      try {
+        return await friendsApi.listFriends(currentUserId);
+      } catch (err: any) {
+        // If the user is not authenticated (missing / expired token), treat as "no friends"
+        const message = String(err?.message || err?.detail || '');
+        const status = err?.status || err?.statusCode || 0;
+        if (
+          status === 401 ||
+          status === 403 ||
+          message.includes('401') ||
+          message.includes('403') ||
+          message.toLowerCase().includes('unauthorized') ||
+          message.toLowerCase().includes('missing bearer token') ||
+          message.toLowerCase().includes('invalid token') ||
+          message.toLowerCase().includes('token expired')
+        ) {
+          // User not authenticated - return empty list instead of error
+          return { items: [] };
+        }
+        // For other errors, still return empty list to prevent UI crash
+        console.error('Failed to load friends:', err);
+        return { items: [] };
+      }
+    },
+    enabled: !!currentUserId && hasToken,
+    refetchInterval: false, // disable polling to avoid repeated 401s
+    retry: false, // Don't retry on auth errors
   });
 
+  const { data: gamesResponse } = useQuery({
+    queryKey: ['games-for-friends'],
+    enabled: hasToken && !!currentUserId,
+    retry: false,
+    queryFn: () => gamesApi.search({}, 1, 100),
+  });
+  
   const [discoverTab, setDiscoverTab] = useState<'recommended' | 'all'>('recommended');
 
   const { data: recommendedResponse, isLoading: isLoadingRecommended } = useQuery({
     queryKey: ['users-recommended'],
-    queryFn: () => api<{ items: any[] }>('/api/users/recommended'),
-    enabled: addFriendOpen && discoverTab === 'recommended',
+    queryFn: async () => {
+      try {
+        const data = await api<any[]>('/api/v1/users/recommended?limit=50');
+        return Array.isArray(data) ? data : [];
+      } catch (err: any) {
+        // If endpoint doesn't exist or auth fails, return empty array gracefully
+        const errorMsg = String(err?.message || err || '');
+        if (
+          !errorMsg.includes('401') &&
+          !errorMsg.includes('403') &&
+          !errorMsg.toLowerCase().includes('unauthorized')
+        ) {
+          console.warn('Failed to fetch recommended users:', err);
+        }
+        return [];
+      }
+    },
+    enabled: addFriendOpen && discoverTab === 'recommended' && !!currentUserId && hasToken,
+    retry: false,
   });
   
   const { data: allUsersResponse, isLoading: isLoadingAllUsers } = useQuery({
     queryKey: ['users-all'],
-    queryFn: () => api<{ items: any[] }>('/api/users/all'),
-    enabled: addFriendOpen && discoverTab === 'all',
+    queryFn: async () => {
+      try {
+        // user-service lists users at /api/v1/users/users
+        const data = await api<any[]>('/api/v1/users/users?limit=200&skip=0');
+        return Array.isArray(data) ? data : [];
+      } catch (err: any) {
+        console.warn('Failed to fetch all users:', err);
+        return [];
+      }
+    },
+    enabled: addFriendOpen && !!currentUserId && hasToken,
+    retry: false,
   });
   
   const addFriendMutation = useMutation({
-    mutationFn: (username: string) => api('/api/friend-requests/add', {
-      method: 'POST',
-      body: JSON.stringify({ username }),
-    }),
+    mutationFn: async (username: string) => {
+      if (!hasToken) {
+        throw new Error('Please sign in to send requests.');
+      }
+      return api('/api/v1/friends/friends/requests', {
+        method: 'POST',
+        body: JSON.stringify({ target_user_id: username }),
+      });
+    },
     onSuccess: () => {
       toast.success('Friend request sent!');
       setAddFriendOpen(false);
@@ -330,12 +403,22 @@ export function FriendsPage() {
   });
   
   const friends = friendsResponse?.items ?? [];
-  const gamesBySlug = new Map(gamesResponse?.items.map(g => [g.slug, g]));
-  const recommendedItems = recommendedResponse?.items ?? [];
-  const allUsersItems = allUsersResponse?.items ?? [];
+  const gamesBySlug = new Map(
+    (gamesResponse?.games ?? []).map((g) => [g.slug, g])
+  );
+  // API returns array directly, not wrapped in { items: [...] }
+  const recommendedItems = recommendedResponse ?? [];
+  const allUsersItems = allUsersResponse ?? [];
   
   const displayItems = discoverTab === 'all' ? allUsersItems : recommendedItems;
   const isLoadingItems = discoverTab === 'all' ? isLoadingAllUsers : isLoadingRecommended;
+  const searchResults = searchQuery.length >= 2
+    ? allUsersItems.filter(u =>
+        u.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        u.full_name?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : [];
+  const isSearching = searchQuery.length >= 2 && isLoadingAllUsers;
   
   const sortedRecommendedItems = useMemo(() => {
     if (!displayItems.length) return [];
@@ -365,7 +448,25 @@ export function FriendsPage() {
       ));
     }
     if (isError) {
-      return <p className="text-center text-red-500">Failed to load friends list.</p>;
+      // Only show error if it's not an auth error (auth errors are handled in queryFn)
+      const errorMessage = String(error || '');
+      if (
+        !errorMessage.toLowerCase().includes('unauthorized') &&
+        !errorMessage.toLowerCase().includes('missing bearer token') &&
+        !errorMessage.toLowerCase().includes('invalid token')
+      ) {
+        return (
+          <p className="text-center text-red-500">
+            Failed to load friends list.
+          </p>
+        );
+      }
+      // Auth errors are treated as "no friends" - show empty state
+      return (
+        <p className="text-center text-gray-400 py-10">
+          No friends yet. Add friends to get started!
+        </p>
+      );
     }
     return friends.map(friend => {
       const game = friend.game ? gamesBySlug.get(friend.game) : null;
@@ -396,18 +497,36 @@ export function FriendsPage() {
     <div className="animate-fade-in">
       <div className="flex justify-between items-center mb-8">
         <h1 className="font-orbitron text-4xl font-black text-blood-500">Social Hub</h1>
-        <div className="flex gap-4">
+          <div className="flex gap-4">
           <div className="relative w-full max-w-xs">
             <Input placeholder="Find players..." className="pl-10 bg-void-800 border-void-700 focus:ring-blood-500" />
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
           </div>
-          <Button 
-            className="bg-blood-500 hover:bg-blood-600"
-            onClick={() => setAddFriendOpen(true)}
-          >
-            <UserPlus className="mr-2 h-5 w-5" />
-            Add Friend
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  className="bg-blood-500 hover:bg-blood-600"
+                  onClick={() => {
+                      if (!currentUserId || !hasToken) {
+                        toast.error('Please sign in to manage friends.');
+                        return;
+                      }
+                      setAddFriendOpen(true);
+                    }}
+                    disabled={!currentUserId || !hasToken}
+                >
+                  <UserPlus className="mr-2 h-5 w-5" />
+                  Add Friend
+                </Button>
+              </TooltipTrigger>
+                {!currentUserId || !hasToken ? (
+                <TooltipContent>
+                  <p>Sign in to add friends</p>
+                </TooltipContent>
+                ) : null}
+            </Tooltip>
+          </TooltipProvider>
           
           <Dialog open={addFriendOpen} onOpenChange={setAddFriendOpen}>
             <DialogContent className="bg-gradient-to-b from-void-800 to-void-900 border border-void-600/50 text-white max-w-xl backdrop-blur-xl shadow-2xl shadow-black/50">
@@ -469,14 +588,14 @@ export function FriendsPage() {
                   </div>
                 )}
 
-                {searchQuery.length >= 2 && !isSearching && searchResults?.items && (
+                {searchQuery.length >= 2 && !isSearching && (
                   <div className="space-y-3 max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-void-600 scrollbar-track-transparent pr-2">
-                    {searchResults.items.length > 0 ? (
+                    {searchResults.length > 0 ? (
                       <>
                         <p className="text-xs text-gray-500 uppercase tracking-wider px-1">
-                          {searchResults.items.length} result{searchResults.items.length !== 1 ? 's' : ''} found
+                          {searchResults.length} result{searchResults.length !== 1 ? 's' : ''} found
                         </p>
-                        {searchResults.items.map((user: any) => (
+                        {searchResults.map((user: any) => (
                           <UserCard
                             key={user.id}
                             user={user}
@@ -573,14 +692,20 @@ export function FriendsPage() {
                     ) : (
                       <div className="space-y-3 max-h-72 overflow-y-auto scrollbar-thin scrollbar-thumb-void-600 scrollbar-track-transparent pr-2">
                         {sortedRecommendedItems.length > 0 ? (
-                          sortedRecommendedItems.map((user, index) => (
+                          sortedRecommendedItems.map((user: any, index: number) => (
                             <div 
                               key={user.id} 
                               className="animate-fade-in"
                               style={{ animationDelay: `${index * 50}ms` }}
                             >
                               <UserCard
-                                user={user}
+                                user={{
+                                  ...user,
+                                  hoursPlayed: user.hours_played ?? 0,
+                                  friendsCount: user.friends_count ?? 0,
+                                  status: user.status === 'active' ? 'Online' : 'Offline',
+                                  avatar: user.avatar_url,
+                                }}
                                 onAddFriend={(username) => addFriendMutation.mutate(username)}
                                 isPending={addFriendMutation.isPending}
                                 showStats={true}

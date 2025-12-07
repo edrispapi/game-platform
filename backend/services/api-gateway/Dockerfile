@@ -17,5 +17,6 @@ USER app
 # Expose port
 EXPOSE 8000
 
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application with Gunicorn (multiprocess ASGI)
+# Use UvicornWorker for ASGI support with multiprocessing
+CMD ["gunicorn", "app.main:app", "-c", "gunicorn_config.py", "--worker-class", "uvicorn.workers.UvicornWorker"]

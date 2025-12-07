@@ -1,4 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
+import type { Friend } from '@shared/types';
 
 export const queryClient = new QueryClient();
 
@@ -51,8 +52,8 @@ interface ApiOptions extends RequestInit {
  */
 export async function api<T>(path: string, init?: ApiOptions): Promise<T> {
   const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...(init?.headers || {}),
+      'Content-Type': 'application/json',
+      ...(init?.headers || {}),
   };
 
   // Add auth token if available and not skipped
@@ -129,15 +130,37 @@ export interface UserResponse {
   display_name?: string;
   bio?: string;
   status: string;
+  avatar_url?: string;
+  profile_visibility?: string;
+  show_online_status?: boolean;
+  show_game_activity?: boolean;
+  two_factor_enabled?: boolean;
   steam_level: number;
   steam_xp: number;
   created_at: string;
   updated_at: string;
+  extra_metadata?: Record<string, any>;
+}
+
+export interface OAuthLoginRequest {
+  provider: 'google' | 'discord' | 'steam';
+  provider_user_id: string;
+  email: string;
+  username?: string;
+  full_name?: string;
+  avatar_url?: string;
+  remember_me?: boolean;
 }
 
 export const authApi = {
   login: (data: LoginRequest) =>
     api<LoginResponse>('/api/v1/users/login', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  oauthLogin: (data: OAuthLoginRequest) =>
+    api<LoginResponse>('/api/v1/users/oauth/login', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
@@ -172,6 +195,7 @@ export interface GameResponse {
   slug: string;
   description?: string;
   short_description?: string;
+  icon_url?: string; // Avatar/Icon (1:1 square)
   price: number;
   discount_percent?: number;
   cover_image_url?: string;
@@ -182,8 +206,19 @@ export interface GameResponse {
   genres: string[];
   tags: string[];
   platforms: string[];
+  pc_requirements?: {
+    minimum?: Record<string, any>;
+    recommended?: Record<string, any>;
+  };
   rating?: number;
   reviews_count?: number;
+  average_rating?: number;
+  total_reviews?: number;
+  positive_reviews?: number;
+  negative_reviews?: number;
+  screenshots?: string[];
+  movies?: string[];
+  metadata?: Record<string, any>;
 }
 
 export interface GameSearchFilters {
@@ -223,18 +258,24 @@ export const gamesApi = {
 
   getById: (gameId: number) => api<GameResponse>(`/api/v1/catalog/games/${gameId}`),
 
+  getBySlug: (slug: string) => api<GameResponse>(`/api/v1/catalog/games/by-slug/${slug}`),
+
+  // Fallback to the lightweight listing to avoid backend 422s from the specialized routes
   getFeatured: (limit = 10) =>
-    api<GameResponse[]>(`/api/v1/catalog/games/featured?limit=${limit}`),
+    api<{ games: GameResponse[] }>(`/api/v1/catalog/games-simple?per_page=${limit}&page=1`).then(r => (r as any).games ?? []),
 
   getNewReleases: (limit = 10) =>
-    api<GameResponse[]>(`/api/v1/catalog/games/new-releases?limit=${limit}`),
+    api<{ games: GameResponse[] }>(`/api/v1/catalog/games-simple?per_page=${limit}&page=1`).then(r => (r as any).games ?? []),
 
   getOnSale: (limit = 10) =>
-    api<GameResponse[]>(`/api/v1/catalog/games/on-sale?limit=${limit}`),
+    api<{ games: GameResponse[] }>(`/api/v1/catalog/games-simple?per_page=${limit}&page=1`).then(r => (r as any).games ?? []),
 
   getGenres: () => api<{ id: number; name: string; slug: string }[]>('/api/v1/catalog/genres'),
 
   getTags: () => api<{ id: number; name: string; slug: string }[]>('/api/v1/catalog/tags'),
+
+  getGameIcons: (limit = 100) =>
+    api<{ icons: string[]; count: number }>(`/api/v1/catalog/game-icons?limit=${limit}`),
 };
 
 // ============================================================================
@@ -262,12 +303,25 @@ export interface ReviewCreate {
   is_recommended: boolean;
 }
 
+export interface ReviewStatsResponse {
+  total_reviews: number;
+  average_rating: number;
+  positive_reviews: number;
+  negative_reviews: number;
+  rating_distribution: { [key: number]: number };
+  recent_reviews: number;
+  helpful_reviews: number;
+}
+
 export const reviewsApi = {
   getForGame: (gameId: string, skip = 0, limit = 100) =>
     api<ReviewResponse[]>(`/api/v1/reviews/game/${gameId}?skip=${skip}&limit=${limit}`),
 
   getForUser: (userId: string, skip = 0, limit = 100) =>
     api<ReviewResponse[]>(`/api/v1/reviews/user/${userId}?skip=${skip}&limit=${limit}`),
+
+  getStatsForGame: (gameId: string) =>
+    api<ReviewStatsResponse>(`/api/v1/reviews/game/${gameId}/stats`),
 
   create: (data: ReviewCreate) =>
     api<ReviewResponse>('/api/v1/reviews/', {
@@ -331,10 +385,32 @@ export const shoppingApi = {
   getWishlists: (userId: string) =>
     api<any[]>(`/api/v1/shopping/wishlist/user/${userId}`),
 
-  addToWishlist: (wishlistId: number, gameId: string, gameTitle: string) =>
+  addToWishlist: (
+    wishlistId: number,
+    gameId: string,
+    gameTitle: string,
+    priceWhenAdded: number,
+    currency: string = 'USD'
+  ) =>
     api<any>(`/api/v1/shopping/wishlist/${wishlistId}/items`, {
       method: 'POST',
-      body: JSON.stringify({ game_id: gameId, game_title: gameTitle }),
+      body: JSON.stringify({
+        game_id: gameId,
+        game_name: gameTitle,
+        price_when_added: priceWhenAdded,
+        currency,
+      }),
+    }),
+
+  createWishlist: (userId: string, name: string = 'My Wishlist') =>
+    api<any>('/api/v1/shopping/wishlist', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, name }),
+    }),
+
+  removeFromWishlist: (wishlistItemId: number) =>
+    api<{ message: string }>(`/api/v1/shopping/wishlist/items/${wishlistItemId}`, {
+      method: 'DELETE',
     }),
 };
 
@@ -358,10 +434,33 @@ export interface FriendResponse {
   current_game?: string;
 }
 
+interface FriendsChatFriend {
+  friend_id: string;
+  since: string;
+}
+
+interface FriendsChatFriendList {
+  user_id: string;
+  friends: FriendsChatFriend[];
+}
+
 export const friendsApi = {
   // PostgreSQL social service
-  listFriends: (userId: string) =>
-    api<{ items: FriendResponse[] }>(`/api/v1/social/friends/${userId}`),
+  listFriends: async (userId: string) => {
+    // Friends & Chat service uses the authenticated user from the JWT token,
+    // so we ignore userId here and rely on Authorization header.
+    const res = await api<FriendsChatFriendList>('/api/v1/friends/friends');
+
+    const items: Friend[] = res.friends.map((f) => ({
+      id: f.friend_id,
+      username: f.friend_id, // Until we join with profile-service, use ID as username
+      avatar: undefined,
+      status: 'Offline',
+      game: undefined,
+    }));
+
+    return { items };
+  },
 
   getPendingRequests: (userId: string) =>
     api<FriendRequestResponse[]>(`/api/v1/social/friend-requests/pending/${userId}`),
@@ -476,7 +575,9 @@ export interface UserAchievementResponse {
 }
 
 export const achievementsApi = {
-  list: () => api<AchievementResponse[]>('/api/v1/achievements/'),
+  // Note: achievement-service mounts its router at /api/v1/achievements
+  // and defines the list endpoint at /achievements.
+  list: () => api<AchievementResponse[]>('/api/v1/achievements/achievements'),
 
   getUserAchievements: (userId: string) =>
     api<UserAchievementResponse[]>(`/api/v1/achievements/users/${userId}`),
@@ -494,14 +595,16 @@ export interface WorkshopItemResponse {
   user_id: string;
   title: string;
   description: string;
-  type: string;
-  status: string;
+  tags?: string[];
+  game_id?: string;
+  version?: string;
   visibility: string;
   file_url?: string;
   thumbnail_url?: string;
+  status: string;
   downloads: number;
-  upvotes: number;
-  downvotes: number;
+  votes_up: number;
+  votes_down: number;
   created_at: string;
   updated_at: string;
 }
@@ -509,9 +612,12 @@ export interface WorkshopItemResponse {
 export interface WorkshopItemCreate {
   title: string;
   description: string;
-  type: string;
+  type?: string;
   visibility?: string;
   tags?: string[];
+  game_id?: string;
+  file_url?: string;
+  thumbnail_url?: string;
 }
 
 export const workshopApi = {
@@ -544,6 +650,109 @@ export const workshopApi = {
   download: (itemId: number) =>
     api<{ download_url: string; downloads: number }>(`/api/v1/workshop/items/${itemId}/download`, {
       method: 'POST',
+    }),
+};
+
+// ============================================================================
+// FORUM API
+// ============================================================================
+
+export interface ForumPostResponse {
+  id: number;
+  uuid: string;
+  user_id: string;
+  game_id?: string;
+  title: string;
+  slug: string;
+  content: string;
+  tags?: string[];
+  status: string;
+  is_pinned: boolean;
+  is_locked: boolean;
+  views: number;
+  likes: number;
+  replies_count: number;
+  created_at: string;
+  updated_at: string;
+  last_reply_at?: string;
+}
+
+export interface ForumPostCreate {
+  title: string;
+  content: string;
+  tags?: string[];
+  game_id?: string;
+}
+
+export interface ForumReplyResponse {
+  id: number;
+  uuid: string;
+  post_id: number;
+  user_id: string;
+  content: string;
+  parent_reply_id?: number;
+  likes: number;
+  is_edited: boolean;
+  created_at: string;
+  updated_at: string;
+  child_replies?: ForumReplyResponse[];
+}
+
+export interface ForumReplyCreate {
+  content: string;
+  parent_reply_id?: number;
+}
+
+export interface ForumListResponse {
+  items: ForumPostResponse[];
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+}
+
+export const forumApi = {
+  listPosts: (gameId?: string, search?: string, sortBy = 'newest', page = 1, perPage = 20) => {
+    const params = new URLSearchParams();
+    if (gameId) params.set('game_id', gameId);
+    if (search) params.set('search', search);
+    params.set('sort_by', sortBy);
+    params.set('page', String(page));
+    params.set('per_page', String(perPage));
+    return api<ForumListResponse>(`/api/v1/forum/posts?${params.toString()}`);
+  },
+
+  getPost: (postId: number) => api<ForumPostResponse>(`/api/v1/forum/posts/${postId}`),
+
+  createPost: (data: ForumPostCreate) =>
+    api<ForumPostResponse>('/api/v1/forum/posts', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updatePost: (postId: number, data: Partial<ForumPostCreate>) =>
+    api<ForumPostResponse>(`/api/v1/forum/posts/${postId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deletePost: (postId: number) =>
+    api<{ message: string }>(`/api/v1/forum/posts/${postId}`, {
+      method: 'DELETE',
+    }),
+
+  likePost: (postId: number) =>
+    api<{ liked: boolean }>(`/api/v1/forum/posts/${postId}/like`, {
+      method: 'POST',
+    }),
+
+  getReplies: (postId: number, skip = 0, limit = 100) =>
+    api<ForumReplyResponse[]>(`/api/v1/forum/posts/${postId}/replies?skip=${skip}&limit=${limit}`),
+
+  createReply: (postId: number, data: ForumReplyCreate) =>
+    api<ForumReplyResponse>(`/api/v1/forum/posts/${postId}/replies`, {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
 };
 

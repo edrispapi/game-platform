@@ -9,10 +9,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api-client";
+import { api, authApi, gamesApi, type UserResponse } from "@/lib/api-client";
 import { UserProfile } from "@shared/types";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { 
@@ -20,12 +21,17 @@ import {
   Palette, Gamepad2, Download, Trash2, Save, Upload,
   Settings as SettingsIcon, UserCircle, Key, Smartphone
 } from "lucide-react";
+import { getDefaultAvatarForUsername } from "@/config/gameAvatarIcons";
+import { GAME_AVATAR_ICONS } from "@/config/gameAvatarIcons";
+import { cn } from "@/lib/utils";
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
-  const { data: profile, isLoading, isError } = useQuery<UserProfile>({
-    queryKey: ['profile'],
-    queryFn: () => api('/api/profile'),
+  const { data: user, isLoading, isError, error } = useQuery<UserResponse>({
+    queryKey: ['user', 'me'],
+    queryFn: () => authApi.me(),
+    retry: 1,
+    retryOnMount: false,
   });
   const [username, setUsername] = useState('');
   const [bio, setBio] = useState('');
@@ -36,51 +42,69 @@ export function SettingsPage() {
   const [gameUpdates, setGameUpdates] = useState(true);
   const [avatarUrl, setAvatarUrl] = useState('');
   const [hideOnlineStatus, setHideOnlineStatus] = useState(false);
+  const [disableVideoPreviews, setDisableVideoPreviews] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [showGameIcons, setShowGameIcons] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Always use static game avatar icons from config (PDF) - no loading needed
+  const gameIcons = GAME_AVATAR_ICONS;
+  const isLoadingIcons = false;
+  
+  // Game icon chooser removed; no dialog handling needed
+  useEffect(() => {
+    if (showGameIcons) {
+      setShowGameIcons(false);
+    }
+  }, [showGameIcons]);
 
   useEffect(() => {
-    if (profile) {
-      setUsername(profile.username);
-      setBio(profile.bio);
-      setProfilePublic(profile.settings.profilePublic);
-      setEmailNotifications(profile.settings.emailNotifications);
-      setHideOnlineStatus(profile.settings.hideOnlineStatus || false);
-      setAvatarUrl(profile.avatar);
+    if (user) {
+      setUsername(user.username);
+      setBio(user.bio || '');
+      setProfilePublic(user.profile_visibility === 'public');
+      setHideOnlineStatus(!user.show_online_status);
+      setAvatarUrl(user.avatar_url || getDefaultAvatarForUsername(user.username));
+      if (user.extra_metadata && typeof user.extra_metadata.disable_video_previews === 'boolean') {
+        setDisableVideoPreviews(user.extra_metadata.disable_video_previews);
+      }
     }
-  }, [profile]);
+  }, [user]);
 
   const profileMutation = useMutation({
-    mutationFn: (updatedProfile: { username: string; bio: string; avatar?: string }) => api('/api/profile', {
-      method: 'POST',
-      body: JSON.stringify(updatedProfile),
-    }),
+    mutationFn: (updatedProfile: { display_name?: string; bio?: string; avatar_url?: string }) => 
+      authApi.updateProfile(updatedProfile),
     onSuccess: () => {
       toast.success('Profile updated successfully!');
-      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
     },
-    onError: () => {
-      toast.error('Failed to update profile. Please try again.');
+    onError: (error: Error) => {
+      toast.error(`Failed to update profile: ${error.message}`);
     },
   });
 
   const settingsMutation = useMutation({
-    mutationFn: (newSettings: UserProfile['settings']) => api('/api/profile/settings', {
-      method: 'POST',
-      body: JSON.stringify(newSettings),
-    }),
+    mutationFn: (newSettings: {
+      profile_visibility?: string;
+      show_online_status?: boolean;
+      extra_metadata?: Record<string, any>;
+    }) =>
+      authApi.updateProfile(newSettings),
     onSuccess: () => {
       toast.success('Settings saved successfully!');
-      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
     },
-    onError: () => {
-      toast.error('Failed to save settings. Please try again.');
+    onError: (error: Error) => {
+      toast.error(`Failed to save settings: ${error.message}`);
     },
   });
 
   const passwordMutation = useMutation({
-    mutationFn: (data: { currentPassword: string; newPassword: string }) => api('/api/profile/change-password', {
+    mutationFn: (data: { current_password: string; new_password: string }) => 
+      api<{ message: string }>('/api/v1/users/change-password', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
@@ -96,29 +120,80 @@ export function SettingsPage() {
   });
 
   const twoFactorMutation = useMutation({
-    mutationFn: (enabled: boolean) => api('/api/profile/two-factor', {
+    mutationFn: (enabled: boolean) => 
+      api<{ enabled: boolean; qr_code?: string; secret?: string; message: string }>('/api/v1/users/two-factor', {
       method: 'POST',
       body: JSON.stringify({ enabled }),
     }),
-    onSuccess: (data: any) => {
-      if (data.qrCode) {
+    onSuccess: (data) => {
+      if (data.enabled && data.qr_code) {
         toast.success('2FA enabled! Scan the QR code with your authenticator app.');
       } else {
         toast.success('2FA disabled successfully!');
       }
-      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
     },
     onError: (error: Error) => {
       toast.error(`Failed to update 2FA: ${error.message}`);
     },
   });
 
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image size must be less than 5MB');
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    try {
+      // Convert file to base64 data URL for now (in production, upload to S3/MinIO)
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64String = reader.result as string;
+        // Update profile with the data URL
+        await profileMutation.mutateAsync({ 
+          display_name: username, 
+          bio: bio, 
+          avatar_url: base64String 
+        });
+        setAvatarUrl(base64String);
+        setIsUploadingAvatar(false);
+        toast.success('Avatar uploaded successfully!');
+      };
+      reader.onerror = () => {
+        toast.error('Failed to read image file');
+        setIsUploadingAvatar(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      toast.error(`Failed to upload avatar: ${(error as Error).message}`);
+      setIsUploadingAvatar(false);
+    }
+  };
+
   const handleSaveProfile = () => {
-    profileMutation.mutate({ username, bio, avatar: avatarUrl });
+    profileMutation.mutate({ 
+      display_name: username, 
+      bio: bio, 
+      avatar_url: avatarUrl || undefined 
+    });
   };
 
   const handleSaveSettings = () => {
-    settingsMutation.mutate({ profilePublic, emailNotifications, hideOnlineStatus });
+    settingsMutation.mutate({ 
+      profile_visibility: profilePublic ? 'public' : 'private',
+      show_online_status: !hideOnlineStatus
+    });
   };
 
   const handleChangePassword = (e: React.FormEvent) => {
@@ -131,7 +206,7 @@ export function SettingsPage() {
       toast.error('Password must be at least 8 characters');
       return;
     }
-    passwordMutation.mutate({ currentPassword, newPassword });
+    passwordMutation.mutate({ current_password: currentPassword, new_password: newPassword });
   };
 
   if (isLoading) {
@@ -146,18 +221,37 @@ export function SettingsPage() {
     );
   }
 
-  if (isError || !profile) {
+  if (isError || !user) {
+    const errorMessage = (isError && error) ? (error as Error).message : 'Failed to load settings.';
+    const isAuthError = errorMessage.includes('Not authenticated') || errorMessage.includes('Could not validate credentials');
+    
     return (
       <div className="animate-fade-in">
         <Card className="bg-void-800 border-void-700">
           <CardContent className="p-12 text-center">
-            <p className="text-red-500 text-lg">Failed to load settings.</p>
+            <p className="text-red-500 text-lg mb-2">
+              {isAuthError ? 'لطفاً دوباره لاگین کنید، نشست شما منقضی شده است.' : 'Failed to load settings.'}
+            </p>
+            {errorMessage && !isAuthError && (
+              <p className="text-gray-400 text-sm mb-4">{errorMessage}</p>
+            )}
+            <div className="flex gap-3 justify-center">
+              {isAuthError ? (
+                <Button 
+                  className="bg-blood-500 hover:bg-blood-600"
+                  onClick={() => window.location.href = '/login'}
+                >
+                  Go to Login
+                </Button>
+              ) : (
             <Button 
-              className="mt-4 bg-blood-500 hover:bg-blood-600"
-              onClick={() => queryClient.invalidateQueries({ queryKey: ['profile'] })}
+                  className="bg-blood-500 hover:bg-blood-600"
+                  onClick={() => queryClient.invalidateQueries({ queryKey: ['user', 'me'] })}
             >
               Retry
             </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -208,7 +302,7 @@ export function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-2xl">
                 <User className="h-6 w-6 text-blood-500" />
-                Public Profile
+                Profile
               </CardTitle>
               <CardDescription>This is how others will see you on the platform</CardDescription>
             </CardHeader>
@@ -221,21 +315,39 @@ export function SettingsPage() {
                     {username.substring(0, 2).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex-1 space-y-2">
-                  <Label>Profile Picture</Label>
-                  <div className="flex items-center gap-3">
-                    <Input
-                      placeholder="Avatar URL"
-                      className="bg-void-700 border-void-600 flex-1"
-                      value={avatarUrl}
-                      onChange={(e) => setAvatarUrl(e.target.value)}
+                <div className="flex-1 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-base font-semibold">Profile Picture</Label>
+                    <span className="text-[11px] text-gray-500">PNG/JPG, square works best</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      ref={fileInputRef}
+                      onChange={handleFileUpload}
                     />
-                    <Button variant="outline" size="sm">
+                    <Button 
+                      size="sm"
+                      className="bg-blood-500 hover:bg-blood-600"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploadingAvatar}
+                    >
                       <Upload className="h-4 w-4 mr-2" />
-                      Upload
+                      {isUploadingAvatar ? 'Uploading...' : 'Upload Image'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setAvatarUrl(getDefaultAvatarForUsername(username))}
+                    >
+                      Reset to Default
                     </Button>
                   </div>
-                  <p className="text-xs text-gray-500">Enter a URL or upload a new image</p>
+                  <div className="text-xs text-gray-500 break-all">
+                    Current: {avatarUrl || 'Not set'}
+                  </div>
                 </div>
               </div>
 
@@ -267,18 +379,18 @@ export function SettingsPage() {
                 <p className="text-xs text-gray-500">{bio.length}/500 characters</p>
               </div>
 
-              {/* Stats */}
+              {/* Stats - Placeholder for now, can be fetched from other services */}
               <div className="grid grid-cols-3 gap-4 pt-4 border-t border-void-700">
                 <div className="text-center p-4 bg-void-700/50 rounded-lg">
-                  <div className="text-2xl font-bold text-blood-500">{profile.hoursPlayed || 0}</div>
+                  <div className="text-2xl font-bold text-blood-500">0</div>
                   <div className="text-xs text-gray-400 mt-1">Hours Played</div>
                 </div>
                 <div className="text-center p-4 bg-void-700/50 rounded-lg">
-                  <div className="text-2xl font-bold text-blood-500">{profile.achievementsCount || 0}</div>
+                  <div className="text-2xl font-bold text-blood-500">0</div>
                   <div className="text-xs text-gray-400 mt-1">Achievements</div>
                 </div>
                 <div className="text-center p-4 bg-void-700/50 rounded-lg">
-                  <div className="text-2xl font-bold text-blood-500">{profile.friendsCount || 0}</div>
+                  <div className="text-2xl font-bold text-blood-500">0</div>
                   <div className="text-xs text-gray-400 mt-1">Friends</div>
                 </div>
               </div>
@@ -314,12 +426,12 @@ export function SettingsPage() {
                 <Input 
                   id="email" 
                   type="email" 
-                  value={profile.email || 'Not set'} 
+                  value={user.email || 'Not set'} 
                   disabled 
                   className="bg-void-900 border-void-700 text-gray-500" 
                 />
                 <p className="text-xs text-gray-500">
-                  {profile.email ? 'Email cannot be changed. Contact support if needed.' : 'Email not set. Please update your account.'}
+                  {user.email ? 'Email cannot be changed. Contact support if needed.' : 'Email not set. Please update your account.'}
                 </p>
               </div>
 
@@ -394,23 +506,25 @@ export function SettingsPage() {
                       <div>
                         <div className="font-semibold">Status</div>
                         <div className="text-sm text-gray-500">
-                          {profile.settings.twoFactorEnabled ? '2FA is enabled' : '2FA is disabled'}
+                          {user.two_factor_enabled ? '2FA is enabled' : '2FA is disabled'}
                         </div>
                       </div>
                       <Button 
                         variant="outline" 
                         size="sm"
-                        onClick={() => twoFactorMutation.mutate(!profile.settings.twoFactorEnabled)}
+                        onClick={() => twoFactorMutation.mutate(!user.two_factor_enabled)}
                         disabled={twoFactorMutation.isPending}
                       >
-                        {profile.settings.twoFactorEnabled ? 'Disable 2FA' : 'Enable 2FA'}
+                        {user.two_factor_enabled ? 'Disable 2FA' : 'Enable 2FA'}
                       </Button>
                     </div>
-                    {twoFactorMutation.data?.qrCode && (
+                    {twoFactorMutation.data?.qr_code && (
                       <div className="mt-4 p-4 bg-void-800 rounded-lg">
                         <p className="text-sm text-gray-400 mb-2">Scan this QR code with your authenticator app:</p>
-                        <img src={twoFactorMutation.data.qrCode} alt="2FA QR Code" className="w-48 h-48 mx-auto" />
-                        <p className="text-xs text-gray-500 mt-2 text-center">Or enter this code manually: {twoFactorMutation.data.secret}</p>
+                        <img src={twoFactorMutation.data.qr_code} alt="2FA QR Code" className="w-48 h-48 mx-auto" />
+                        {twoFactorMutation.data.secret && (
+                          <p className="text-xs text-gray-500 mt-2 text-center">Or enter this code manually: <code className="bg-void-700 px-2 py-1 rounded">{twoFactorMutation.data.secret}</code></p>
+                        )}
                       </div>
                     )}
                   </CardContent>
@@ -628,6 +742,29 @@ export function SettingsPage() {
                     <option>German</option>
                   </select>
                 </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Video previews in Store</Label>
+                    <p className="text-xs text-gray-400">
+                      Disable hover video trailers on game cards (useful on low bandwidth or laptops).
+                    </p>
+                  </div>
+                  <Switch
+                    checked={!disableVideoPreviews}
+                    onCheckedChange={(checked) => {
+                      setDisableVideoPreviews(!checked);
+                      const current = user?.extra_metadata || {};
+                      settingsMutation.mutate({
+                        profile_visibility: profilePublic ? 'public' : 'private',
+                        show_online_status: !hideOnlineStatus,
+                        extra_metadata: {
+                          ...current,
+                          disable_video_previews: !checked,
+                        },
+                      });
+                    }}
+                  />
+                </div>
               </CardContent>
             </Card>
 
@@ -659,6 +796,8 @@ export function SettingsPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Game icon chooser dialog removed */}
     </div>
   );
 }

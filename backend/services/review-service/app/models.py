@@ -55,7 +55,8 @@ class Review(Base):
     playtime_at_review = Column(Integer, default=0, nullable=False)
     is_early_access = Column(Boolean, default=False, nullable=False)
 
-    status = Column(String(20), default=ReviewStatus.PENDING.value, nullable=False)
+    # Default new reviews to approved so they surface immediately.
+    status = Column(String(20), default=ReviewStatus.APPROVED.value, nullable=False)
     helpful_votes = Column(Integer, default=0, nullable=False)
     unhelpful_votes = Column(Integer, default=0, nullable=False)
     total_votes = Column(Integer, default=0, nullable=False)
