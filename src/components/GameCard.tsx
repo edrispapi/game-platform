@@ -13,6 +13,12 @@ import { useMutation } from "@tanstack/react-query";
 import { shoppingApi, getCurrentUserId } from "@/lib/api-client";
 import { toast } from "sonner";
 
+const sanitizeSlug = (value?: string | number | null) => {
+  if (value === null || value === undefined) return null;
+  const str = String(value).trim().replace(/^\/+|\/+$/g, "");
+  return str.length > 0 ? str : null;
+};
+
 // Flexible game type that works with both full Game and simplified StoreGame
 type GameCardGame = Pick<
   Game,
@@ -115,6 +121,11 @@ export function GameCard({ game, variant = 'store', disableVideoPreview = false 
 
   const showWishlist = variant === "store" || variant === "library";
 
+  const slugSegment =
+    sanitizeSlug(game.slug) ||
+    sanitizeSlug(game.id) ||
+    "game";
+
   return (
     <motion.div
       whileHover={{ y: -8 }}
@@ -147,7 +158,7 @@ export function GameCard({ game, variant = 'store', disableVideoPreview = false 
         </button>
       )}
 
-      <Link to={`/game/${game.slug}`} className="block">
+      <Link to={`/game/${slugSegment}`} className="block">
         <div className="aspect-[3/4] relative overflow-hidden">
           <WebGLImage
             src={game.coverImage}
@@ -187,7 +198,7 @@ export function GameCard({ game, variant = 'store', disableVideoPreview = false 
         </div>
       </Link>
       <div className="p-4">
-        <Link to={`/game/${game.slug}`} className="block">
+        <Link to={`/game/${slugSegment}`} className="block">
           <h3 className="font-orbitron text-lg font-bold truncate text-white transition-colors hover:text-blood-400 cursor-pointer no-underline">
             {game.title}
           </h3>

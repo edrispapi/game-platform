@@ -205,11 +205,33 @@ export function GameDetailPage() {
   const currentUserId = getCurrentUserId();
 
   // Fetch game by slug using dedicated endpoint
+  const parseNumericId = (value: string | undefined) => {
+    if (!value) return null;
+    // Match pure numbers or patterns like game-123
+    const match = value.match(/(\d+)/);
+    return match ? Number(match[1]) : null;
+  };
+
   const { data: game, isLoading: isLoadingGame, isError: isGameError } = useQuery({
     queryKey: ['game-by-slug', slug],
-    queryFn: () => {
+    queryFn: async () => {
       if (!slug) throw new Error('Slug is required');
-      return gamesApi.getBySlug(slug);
+      const numericId = parseNumericId(slug);
+
+      // Try by slug first
+      try {
+        return await gamesApi.getBySlug(slug);
+      } catch (err) {
+        // Fallback: if the slug is actually an id (or contains one), try by id
+        if (numericId !== null) {
+          try {
+            return await gamesApi.getById(numericId);
+          } catch (idErr) {
+            // swallow and rethrow original if id also fails
+          }
+        }
+        throw err;
+      }
     },
     enabled: !!slug,
     retry: 1,
