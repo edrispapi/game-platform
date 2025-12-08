@@ -31,12 +31,27 @@ export function GameForumPage() {
   const [sortBy, setSortBy] = useState<'newest' | 'popular' | 'replies' | 'likes'>('newest');
   const queryClient = useQueryClient();
 
-  // Fetch game by slug to get game_id
+  // Try slug first; if slug is numeric, fall back to ID lookup (matches GameDetailPage behavior).
+  const parseNumericId = (value: string | undefined) => {
+    if (!value) return null;
+    const match = value.match(/(\d+)/);
+    return match ? Number(match[1]) : null;
+  };
+
   const { data: game, isLoading: isLoadingGame, isError: isGameError } = useQuery({
     queryKey: ['game-by-slug', slug],
-    queryFn: () => {
+    queryFn: async () => {
       if (!slug) throw new Error('Slug is required');
-      return gamesApi.getBySlug(slug);
+      const numericId = parseNumericId(slug);
+
+      try {
+        return await gamesApi.getBySlug(slug);
+      } catch (err) {
+        if (numericId !== null) {
+          return await gamesApi.getById(numericId);
+        }
+        throw err;
+      }
     },
     enabled: !!slug,
     retry: 1,

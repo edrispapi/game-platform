@@ -1,8 +1,8 @@
 'use client';
 import { useMemo } from "react";
 import { GameCard } from "@/components/GameCard";
-import { useQuery } from "@tanstack/react-query";
-import { shoppingApi, getCurrentUserId } from "@/lib/api-client";
+import { useQuery, useQueries } from "@tanstack/react-query";
+import { shoppingApi, getCurrentUserId, gamesApi, reviewsApi } from "@/lib/api-client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,37 +30,160 @@ export function LibraryPage() {
   const wishlistItems = (wishlists?.[0]?.items ?? []) as any[];
   const wishlistCount = Array.isArray(wishlistItems) ? wishlistItems.length : 0;
 
+  const wishlistIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (Array.isArray(wishlistItems) ? wishlistItems : [])
+            .map((item: any) => item.game_id ?? item.id)
+            .filter(Boolean)
+            .map(String)
+        )
+      ),
+    [wishlistItems]
+  );
+
+  const { data: wishlistDetails = [] } = useQuery({
+    queryKey: ['wishlist-details', userId, wishlistIds],
+    enabled: !!userId && wishlistIds.length > 0,
+    staleTime: 2 * 60 * 1000,
+    queryFn: async () => {
+      const items = Array.isArray(wishlistItems) ? wishlistItems : [];
+      const results = await Promise.all(
+        items.map(async (item: any) => {
+          const id = item.game_id ?? item.id;
+          const slug = item.game_slug || item.slug;
+
+          if (id) {
+            try {
+              return await gamesApi.getById(Number(id));
+            } catch (err) {
+              console.warn('Wishlist detail by id failed, trying slug', id, slug, err);
+            }
+          }
+          if (slug) {
+            try {
+              return await gamesApi.getBySlug(String(slug));
+            } catch (err) {
+              console.warn('Wishlist detail by slug failed', slug, err);
+            }
+          }
+          return null;
+        })
+      );
+      return results.filter(Boolean) as any[];
+    },
+  });
+
+  const reviewStatsQueries = useQueries({
+    queries: wishlistIds.map((id) => ({
+      queryKey: ['wishlist-review-stats', id],
+      queryFn: async () => {
+        try {
+          return await reviewsApi.getStatsForGame(String(id));
+        } catch (err) {
+          return null;
+        }
+      },
+      enabled: !!id,
+      staleTime: 2 * 60 * 1000,
+      retry: 0,
+    })),
+  });
+
+  const statsMap = useMemo(() => {
+    const map = new Map<string, { rating: number; reviewsCount: number }>();
+    reviewStatsQueries.forEach((query, idx) => {
+      const id = wishlistIds[idx];
+      const data: any = (query as any).data;
+      if (!id || !data || typeof data !== 'object') return;
+      if ('total_reviews' in data || 'average_rating' in data) {
+        map.set(String(id), {
+          rating: data.average_rating ?? 0,
+          reviewsCount: data.total_reviews ?? 0,
+        });
+      }
+    });
+    return map;
+  }, [reviewStatsQueries, wishlistIds]);
+
   const wishlistGames = useMemo(
     () =>
       (Array.isArray(wishlistItems) ? wishlistItems : []).map((item: any) => {
-        const title = item.game_name || item.title || 'Untitled Game';
-        const slug =
+        const detail = wishlistDetails.find(
+          (g: any) => String(g.id) === String(item.game_id ?? item.id)
+        );
+        const stats = statsMap.get(String(item.game_id ?? item.id));
+
+        const title =
+          detail?.title ||
+          item.game_name ||
+          item.title ||
+          'Untitled Game';
+
+        const rawSlug =
           item.game_slug ||
           item.slug ||
+          detail?.slug ||
           (title ? title.toLowerCase().replace(/\s+/g, "-") : "");
+
+        let slug = (rawSlug || "").replace(/^\/+|\/+$/g, "");
+        if (!slug) {
+          const idFallback = item.game_id ?? item.id ?? detail?.id;
+          slug = idFallback ? `game-${idFallback}` : "game";
+        }
+
+        const safeSlug = slug || "game";
+
+        // Prefer catalog/store images first to match Store page visuals; fallback to wishlist-provided images
         const cover =
+          detail?.cover_image_url ||
+          detail?.banner_image_url ||
+          (detail as any)?.header_image_url ||
+          item.image_url ||
+          item.thumbnail_url ||
           item.cover_image_url ||
           item.banner_image_url ||
-          item.thumbnail_url ||
           "/images/default-cover.svg";
-        const banner = item.banner_image_url || cover;
+
+        const banner =
+          detail?.banner_image_url ||
+          (detail as any)?.header_image_url ||
+          item.banner_image_url ||
+          item.image_url ||
+          cover;
 
         return {
-          id: String(item.game_id ?? item.id ?? slug ?? title),
-          slug,
+          id: String(item.game_id ?? item.id ?? detail?.id ?? slug ?? title),
+          slug: safeSlug,
           title,
-          description: item.description || item.short_description || "",
-          price: item.price_when_added ?? item.price ?? 0,
+          description:
+            item.description ||
+            item.short_description ||
+            detail?.description ||
+            detail?.short_description ||
+            "",
+          price:
+            detail?.price ??
+            item.price ??
+            item.price_when_added ??
+            0,
           coverImage: cover,
           bannerImage: banner,
-          tags: Array.isArray(item.tags) ? item.tags : [],
+          tags: Array.isArray(item.tags)
+            ? item.tags
+            : Array.isArray(detail?.tags)
+              ? detail.tags
+              : [],
           reviews: [],
-          developer: item.developer,
-          publisher: item.publisher,
-          releaseDate: item.release_date,
+          rating: stats?.rating ?? detail?.average_rating ?? detail?.rating ?? 0,
+          reviewsCount: stats?.reviewsCount ?? detail?.total_reviews ?? detail?.reviews_count ?? 0,
+          developer: item.developer || detail?.developer,
+          publisher: item.publisher || detail?.publisher,
+          releaseDate: item.release_date || detail?.release_date,
         };
       }),
-    [wishlistItems]
+    [wishlistItems, wishlistDetails, statsMap]
   );
 
   if (isError) {
