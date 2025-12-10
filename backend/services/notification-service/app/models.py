@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Index
+import json
 from sqlalchemy.sql import func
 from .database import Base
 
@@ -15,6 +16,24 @@ class Notification(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     read_at = Column(DateTime(timezone=True), nullable=True)
     
+    # Provide optional attributes expected by schemas even if not stored as columns
+    @property
+    def title(self) -> str | None:
+        try:
+            meta = json.loads(self.extra_metadata or "{}")
+            return meta.get("title")
+        except Exception:
+            return None
+
+    @property
+    def delivered_via(self) -> str:
+        return "in-app"
+
+    @property
+    def updated_at(self):
+        # No explicit updated_at column; reuse created_at for response compatibility
+        return self.created_at
+
     __table_args__ = (
         Index('idx_user_unread', 'user_id', 'is_read'),
         Index('idx_user_created', 'user_id', 'created_at'),

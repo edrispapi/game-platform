@@ -359,7 +359,8 @@ export function GameDetailPage() {
     if (!url) return null;
     const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/);
     if (match) {
-      return `https://img.youtube.com/vi/${match[1]}/maxresdefault.jpg`;
+      // hqdefault is more reliably present than maxresdefault
+      return `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`;
     }
     return null;
   };
@@ -570,13 +571,13 @@ export function GameDetailPage() {
               {screenshots.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {screenshots.map((img, idx) => (
-                        <ScreenshotCard 
+                    <ScreenshotCard
                       key={idx}
-                          imageUrl={img}
-                          gameTitle={game.title}
-                          index={idx}
-                          fallbackThumbnail={trailerThumbnail && idx === 0 ? trailerThumbnail : null}
-                        />
+                      imageUrl={img}
+                      gameTitle={game.title}
+                      index={idx}
+                      fallbackThumbnail={trailerThumbnail || fallbackScreenshot || null}
+                    />
                   ))}
                 </div>
               ) : (

@@ -16,7 +16,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { UserLink } from "@/components/UserLink";
-import { CommentReactions } from "@/components/CommentReactions";
+// Comment reactions are currently disabled until backend endpoints exist
+// import { CommentReactions } from "@/components/CommentReactions";
 
 
 export function GameForumPage() {
@@ -89,16 +90,16 @@ export function GameForumPage() {
       id: String(p.id),
       title: p.title,
       content: p.content,
-      author: p.user_id, // Will need to fetch username separately if needed
+      author: p.author_username || (p.user_id ? `User ${p.user_id}` : "Unknown"),
       authorId: p.user_id,
-      authorAvatar: '', // Empty string instead of undefined
+      authorAvatar: p.author_avatar_url || "/images/default-avatar.svg",
       tags: p.tags || [],
       createdAt: new Date(p.created_at).getTime(),
       views: p.views,
       likes: p.likes,
       replies: p.replies_count,
       pinned: p.is_pinned,
-      isLiked: false, // Will need to check separately
+      isLiked: false, // backend doesn't expose per-user like state yet
       gameSlug: slug || '',
     }));
   }, [postsResponse, slug]);
@@ -107,9 +108,9 @@ export function GameForumPage() {
     return (repliesResponse || []).map((r: ForumReplyResponse) => ({
       id: String(r.id),
       postId: String(r.post_id),
-      author: r.user_id,
+      author: r.author_username || (r.user_id ? `User ${r.user_id}` : "Unknown"),
       authorId: r.user_id,
-      authorAvatar: '', // Empty string instead of undefined
+      authorAvatar: r.author_avatar_url || "/images/default-avatar.svg",
       content: r.content,
       createdAt: new Date(r.created_at).getTime(),
       likes: r.likes,
@@ -345,7 +346,8 @@ export function GameForumPage() {
                 <span className="font-medium">{totalRepliesForSelectedPost} {totalRepliesForSelectedPost === 1 ? 'reply' : 'replies'}</span>
               </div>
             </div>
-            <CommentReactions compact className="mt-2" />
+                  {/* Reactions disabled until backed endpoints are available */}
+                  {/* <CommentReactions compact className="mt-2" /> */}
           </CardContent>
         </Card>
 
@@ -385,7 +387,7 @@ export function GameForumPage() {
                       </span>
                     </div>
                       <p className="text-gray-300 mb-2 sm:mb-3 leading-relaxed text-sm sm:text-base break-words">{reply.content}</p>
-                    <CommentReactions compact />
+                  {/* <CommentReactions compact /> */}
                   </div>
                 </div>
               </CardContent>
@@ -519,7 +521,16 @@ export function GameForumPage() {
             <Card
               key={post.id}
                   className="bg-void-800 border-void-700 hover:border-blood-500/50 transition-all duration-200 cursor-pointer group shadow-sm hover:shadow-lg"
-              onClick={() => setSelectedPost(post)}
+              onClick={async () => {
+                try {
+                  // Increment server-side views, then refresh list to reflect count
+                  await forumApi.getPost(Number(post.id));
+                  queryClient.invalidateQueries({ queryKey: ['forum-posts', gameId] });
+                } catch (e) {
+                  console.warn('Failed to fetch post for view bump', e);
+                }
+                setSelectedPost(post);
+              }}
             >
                   <CardContent className="p-4 sm:p-6">
                     <div className="flex items-start gap-3 sm:gap-4">

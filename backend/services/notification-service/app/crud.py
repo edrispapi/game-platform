@@ -4,6 +4,7 @@ Notification Service CRUD Operations
 from __future__ import annotations
 
 from typing import List, Optional
+import json
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
@@ -19,7 +20,13 @@ def _publish(event_type: str, payload: dict) -> None:
 
 
 def create_notification(db: Session, notification: schemas.NotificationCreate) -> models.Notification:
-    db_notification = models.Notification(**notification.model_dump())
+    db_notification = models.Notification(
+        user_id=notification.user_id,
+        message=notification.message,
+        category=notification.category,
+        priority=notification.priority,
+        extra_metadata=json.dumps(notification.metadata or {}),
+    )
     db.add(db_notification)
     db.commit()
     db.refresh(db_notification)

@@ -78,6 +78,17 @@ async def register_user(
         raise _http_error_from_service(exc)
 
 
+@router.get("/by-id/{user_id}", response_model=UserResponse)
+async def get_user_by_id(
+    user_id: int,
+    service: UserService = Depends(get_user_service),
+) -> User:
+    try:
+        return await service.get_by_id(user_id)
+    except ServiceError as exc:
+        raise _http_error_from_service(exc)
+
+
 @router.post("/login")
 async def login_user(
     login_data: UserLogin,

@@ -454,7 +454,7 @@ export const friendsApi = {
     const items: Friend[] = res.friends.map((f) => ({
       id: f.friend_id,
       username: f.friend_id, // Until we join with profile-service, use ID as username
-      avatar: undefined,
+      avatar: "",
       status: 'Offline',
       game: undefined,
     }));
@@ -661,6 +661,8 @@ export interface ForumPostResponse {
   id: number;
   uuid: string;
   user_id: string;
+  author_username?: string | null;
+  author_avatar_url?: string | null;
   game_id?: string;
   title: string;
   slug: string;
@@ -689,6 +691,8 @@ export interface ForumReplyResponse {
   uuid: string;
   post_id: number;
   user_id: string;
+  author_username?: string | null;
+  author_avatar_url?: string | null;
   content: string;
   parent_reply_id?: number;
   likes: number;

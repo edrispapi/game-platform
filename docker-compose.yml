@@ -11,7 +11,7 @@ services:
   # ============================================================================
   
   mongo:
-    image: mongo:6
+    image: mongo:4.4
     container_name: crimson-mongo
     ports:
       - "27017:27017"
@@ -73,6 +73,7 @@ services:
     environment:
       <<: *minio-env
       USER_DATABASE_URL: postgresql://crimson:crimson123@postgres:5432/user_service
+      SECRET_KEY: 359919ea6e72b1e135c192f503cbc752f3eb09aa3109b9136b30ffffa6f5152a
       ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
     depends_on:
       postgres:
@@ -176,22 +177,6 @@ services:
         condition: service_healthy
     ports:
       - "13007:8007"
-    networks:
-      - crimson-net
-
-  social-service:
-    build:
-      context: ./backend/services/social-service
-    container_name: crimson-social-service
-    environment:
-      <<: *minio-env
-      SOCIAL_DATABASE_URL: postgresql://crimson:crimson123@postgres:5432/social_service
-      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
-    depends_on:
-      postgres:
-        condition: service_healthy
-    ports:
-      - "13008:8008"
     networks:
       - crimson-net
 
@@ -314,7 +299,7 @@ services:
     container_name: crimson-friends-chat-service
     environment:
       PROJECT_NAME: Friends & Chat
-      SECRET_KEY: crimson-secret-key-change-in-production
+      SECRET_KEY: 359919ea6e72b1e135c192f503cbc752f3eb09aa3109b9136b30ffffa6f5152a
       JWT_ALGORITHM: HS256
       ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
       MONGO_URL: mongodb://mongo:27017
@@ -345,7 +330,6 @@ services:
       PURCHASE_SERVICE_URL: http://purchase-service:8005
       PAYMENT_SERVICE_URL: http://payment-service:8006
       ONLINE_SERVICE_URL: http://online-service:8007
-      SOCIAL_SERVICE_URL: http://social-service:8008
       NOTIFICATION_SERVICE_URL: http://notification-service:8009
       RECOMMENDATION_SERVICE_URL: http://recommendation-service:8010
       ACHIEVEMENT_SERVICE_URL: http://achievement-service:8011
@@ -370,8 +354,6 @@ services:
       payment-service:
         condition: service_started
       online-service:
-        condition: service_started
-      social-service:
         condition: service_started
       notification-service:
         condition: service_started

@@ -56,8 +56,15 @@ export function DashboardLayout(): JSX.Element {
     },
   });
   const handleLogout = () => {
+    // Clear auth token and user ID to force logout
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('crimson-auth-token');
+      localStorage.removeItem('crimson-user-id');
+      localStorage.removeItem('crimson-username');
+      localStorage.removeItem('crimson-email');
+    }
     toast.info("You have been logged out.");
-    navigate('/login');
+    navigate('/login', { replace: true });
   };
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,7 +164,7 @@ export function DashboardLayout(): JSX.Element {
                     >
                       <Bell className="h-6 w-6" />
                       {unreadCount > 0 && (
-                        <Badge className="absolute top-1 right-1 h-4 w-4 p-0 flex items-center justify-center text-xs bg-blood-500 text-white">
+                        <Badge className="absolute -top-1 -right-1 translate-x-1/2 -translate-y-1/2 h-4 w-4 p-0 flex items-center justify-center text-xs bg-blood-500 text-white">
                           {unreadCount}
                         </Badge>
                       )}
@@ -171,7 +178,11 @@ export function DashboardLayout(): JSX.Element {
                       <button type="button" className="relative">
                         <Avatar className="h-10 w-10 cursor-pointer border-2 border-transparent hover:border-blood-500">
                           <AvatarImage
-                            src={(profile as any).avatar_url || getDefaultAvatarForUsername(profile.username)}
+                            src={
+                              (profile as any).avatar_url ||
+                              getDefaultAvatarForUsername(profile.username) ||
+                              "/images/default-avatar.svg"
+                            }
                             alt={profile.username || 'User'}
                           />
                           <AvatarFallback>
@@ -222,6 +233,7 @@ export function DashboardLayout(): JSX.Element {
                         className="relative"
                       >
                         <Avatar className="h-10 w-10 cursor-pointer border-2 border-transparent hover:border-blood-500 transition-colors">
+                          <AvatarImage src="/images/default-avatar.svg" alt="Guest" />
                           <AvatarFallback>U</AvatarFallback>
                         </Avatar>
                       </button>

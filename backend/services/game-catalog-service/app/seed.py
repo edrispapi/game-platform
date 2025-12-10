@@ -76,9 +76,16 @@ CURATED_STEAM_GAMES: list[dict] = [
         "price": 24.99,
         "release_date": datetime(2020, 9, 17),
         "age_rating": AgeRating.TEEN.value,
-        # No hero provided; reuse capsule art for both slots.
-        "header_image_url": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1145360/library_600x900_2x.jpg",
+        # Use working Steam assets and valid trailer thumbnail-friendly video
+        "header_image_url": "https://cdn.cloudflare.steamstatic.com/steam/apps/1145360/header.jpg",
+        "background_image_url": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1145360/library_hero_2x.jpg",
         "capsule_image_url": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1145360/library_600x900_2x.jpg",
+        "screenshots": [
+            "https://cdn.cloudflare.steamstatic.com/steam/apps/1145360/header.jpg",
+            "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1145360/library_hero_2x.jpg",
+            "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1145360/library_600x900_2x.jpg",
+        ],
+        "movies": ["https://www.youtube.com/watch?v=5917EfTQAKU"],
         "average_rating": 4.9,
         "total_reviews": 350000,
         "positive_reviews": 340000,

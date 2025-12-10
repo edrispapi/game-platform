@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api-client";
+import { notificationsApi, getCurrentUserId } from "@/lib/api-client";
 import { Notification } from "@shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -10,21 +10,39 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 export function NotificationsPage() {
   const queryClient = useQueryClient();
-  const { data: notificationsResponse, isLoading, isError } = useQuery({
-    queryKey: ['notifications'],
-    queryFn: () => api<{ items: Notification[] }>('/api/notifications'),
+  const userId = getCurrentUserId();
+
+  const { data: notifications = [], isLoading, isError } = useQuery({
+    queryKey: ['notifications', userId],
+    enabled: !!userId,
+    queryFn: async () => {
+      if (!userId) return [];
+      try {
+        return await notificationsApi.list(userId, false, 50);
+      } catch (err: any) {
+        const msg = String(err?.message || '');
+        if (msg.includes('404')) return [];
+        throw err;
+      }
+    },
+    staleTime: 60_000,
+    refetchInterval: 60_000,
   });
-  const notifications = notificationsResponse?.items.sort((a, b) => b.createdAt - a.createdAt) ?? [];
+
+  const sortedNotifications = notifications.sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
   const markAsReadMutation = useMutation({
-    mutationFn: (notificationId: string) => api(`/api/notifications/${notificationId}/read`, { method: 'POST' }),
+    mutationFn: (notificationId: number) => notificationsApi.markRead(notificationId, true),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications', userId] });
     },
     onError: () => {
       toast.error("Failed to mark notification as read.");
     }
   });
-  const getIcon = (type: Notification['type']) => {
+  const getIcon = (type: string) => {
     switch (type) {
       case 'friend-request':
         return <UserPlus className="h-6 w-6 text-blue-400" />;
@@ -34,6 +52,9 @@ export function NotificationsPage() {
         return <Bell className="h-6 w-6 text-gray-400" />;
     }
   };
+  if (!userId) {
+    return <div className="text-center text-gray-400">Please log in to view notifications.</div>;
+  }
   if (isError) {
     return <div className="text-center text-red-500">Failed to load notifications.</div>;
   }
@@ -52,23 +73,23 @@ export function NotificationsPage() {
               <Skeleton className="h-8 w-24" />
             </div>
           ))
-        ) : notifications.length > 0 ? (
-          notifications.map(notif => (
+        ) : sortedNotifications.length > 0 ? (
+          sortedNotifications.map(notif => (
             <div
               key={notif.id}
               className={cn(
                 "flex items-start gap-4 p-4 bg-void-800 rounded-lg border border-void-700 transition-colors",
-                !notif.read && "bg-void-700/50 border-blood-500/30"
+                !notif.is_read && "bg-void-700/50 border-blood-500/30"
               )}
             >
               <div className="bg-void-900 p-2 rounded-full mt-1">{getIcon(notif.type)}</div>
               <div className="flex-grow">
                 <p className="text-gray-200">{notif.message}</p>
                 <p className="text-sm text-gray-500 mt-1">
-                  {formatDistanceToNow(new Date(notif.createdAt), { addSuffix: true })}
+                  {formatDistanceToNow(new Date(notif.created_at), { addSuffix: true })}
                 </p>
               </div>
-              {!notif.read && (
+              {!notif.is_read && (
                 <Button
                   variant="ghost"
                   size="sm"

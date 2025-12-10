@@ -1,14 +1,32 @@
 """Forum service API routes."""
 from __future__ import annotations
 
-from typing import Optional, List
+from typing import Optional, List, Dict, Tuple
 from fastapi import APIRouter, Depends, HTTPException, status
+import os
+import httpx
 from sqlalchemy.orm import Session
 
 from . import crud, database, schemas
 from .core.auth import verify_token
 
+USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "http://user-service:8001")
 router = APIRouter()
+
+
+async def _fetch_user_profile(user_id: str, client: httpx.AsyncClient) -> Tuple[str | None, str | None]:
+    """
+    Fetch a user's username and avatar_url from the user service.
+    Returns (username, avatar_url) or (None, None) on failure.
+    """
+    try:
+        resp = await client.get(f"{USER_SERVICE_URL}/api/v1/users/by-id/{user_id}", timeout=5.0)
+        if resp.status_code != 200:
+            return None, None
+        data = resp.json()
+        return data.get("username"), data.get("avatar_url")
+    except Exception:
+        return None, None
 
 
 @router.post("/posts", response_model=schemas.ForumPostResponse, status_code=status.HTTP_201_CREATED)
@@ -26,7 +44,7 @@ def create_post(
 
 
 @router.get("/posts", response_model=schemas.ForumListResponse)
-def list_posts(
+async def list_posts(
     game_id: Optional[str] = None,
     search: Optional[str] = None,
     sort_by: str = "newest",
@@ -48,9 +66,45 @@ def list_posts(
     )
     
     total_pages = max(1, (total + limit - 1) // limit)
+    # Enrich with author profile data
+    unique_user_ids = {p.user_id for p in posts if p.user_id}
+    profile_cache: Dict[str, Tuple[str | None, str | None]] = {}
+    async with httpx.AsyncClient() as client:
+        for uid in unique_user_ids:
+            username, avatar = await _fetch_user_profile(uid, client)
+            profile_cache[uid] = (username, avatar)
     
+    enriched_items = []
+    for p in posts:
+        username, avatar = profile_cache.get(p.user_id, (None, None))
+        enriched_items.append(
+            schemas.ForumPostResponse.model_validate(
+                {
+                    "id": p.id,
+                    "uuid": p.uuid,
+                    "user_id": p.user_id,
+                    "author_username": username,
+                    "author_avatar_url": avatar,
+                    "title": p.title,
+                    "content": p.content,
+                    "tags": p.tags,
+                    "game_id": p.game_id,
+                    "is_pinned": p.is_pinned,
+                    "is_locked": p.is_locked,
+                    "slug": p.slug,
+                    "status": p.status,
+                    "views": p.views,
+                    "likes": p.likes,
+                    "replies_count": p.replies_count,
+                    "created_at": p.created_at,
+                    "updated_at": p.updated_at,
+                    "last_reply_at": p.last_reply_at,
+                }
+            )
+        )
+
     return schemas.ForumListResponse(
-        items=posts,
+        items=enriched_items,
         total=total,
         page=page,
         per_page=limit,
@@ -59,7 +113,7 @@ def list_posts(
 
 
 @router.get("/posts/{post_id}", response_model=schemas.ForumPostResponse)
-def get_post(
+async def get_post(
     post_id: int,
     db: Session = Depends(database.get_db),
 ):
@@ -71,7 +125,31 @@ def get_post(
     # Increment view count
     crud.increment_post_views(db, post)
     
-    return post
+    async with httpx.AsyncClient() as client:
+        username, avatar = await _fetch_user_profile(post.user_id, client)
+    return schemas.ForumPostResponse.model_validate(
+        {
+            "id": post.id,
+            "uuid": post.uuid,
+            "user_id": post.user_id,
+            "author_username": username,
+            "author_avatar_url": avatar,
+            "title": post.title,
+            "content": post.content,
+            "tags": post.tags,
+            "game_id": post.game_id,
+            "is_pinned": post.is_pinned,
+            "is_locked": post.is_locked,
+            "slug": post.slug,
+            "status": post.status,
+            "views": post.views,
+            "likes": post.likes,
+            "replies_count": post.replies_count,
+            "created_at": post.created_at,
+            "updated_at": post.updated_at,
+            "last_reply_at": post.last_reply_at,
+        }
+    )
 
 
 @router.put("/posts/{post_id}", response_model=schemas.ForumPostResponse)
@@ -146,7 +224,7 @@ def create_reply(
 
 
 @router.get("/posts/{post_id}/replies", response_model=List[schemas.ForumReplyResponse])
-def get_replies(
+async def get_replies(
     post_id: int,
     skip: int = 0,
     limit: int = 100,
@@ -157,5 +235,34 @@ def get_replies(
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     
-    return crud.get_replies(db, post_id, skip=skip, limit=limit)
+    replies = crud.get_replies(db, post_id, skip=skip, limit=limit)
+    unique_user_ids = {r.user_id for r in replies if r.user_id}
+    profile_cache: Dict[str, Tuple[str | None, str | None]] = {}
+    async with httpx.AsyncClient() as client:
+        for uid in unique_user_ids:
+            username, avatar = await _fetch_user_profile(uid, client)
+            profile_cache[uid] = (username, avatar)
+    enriched = []
+    for r in replies:
+        username, avatar = profile_cache.get(r.user_id, (None, None))
+        enriched.append(
+            schemas.ForumReplyResponse.model_validate(
+                {
+                    "id": r.id,
+                    "uuid": r.uuid,
+                    "post_id": r.post_id,
+                    "user_id": r.user_id,
+                    "author_username": username,
+                    "author_avatar_url": avatar,
+                    "content": r.content,
+                    "parent_reply_id": r.parent_reply_id,
+                    "likes": r.likes,
+                    "is_edited": r.is_edited,
+                    "created_at": r.created_at,
+                    "updated_at": r.updated_at,
+                    "child_replies": [],
+                }
+            )
+        )
+    return enriched
 

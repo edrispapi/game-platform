@@ -19,7 +19,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(router)
+# Match API gateway routing: expose routes under /api/v1/notifications
+app.include_router(router, prefix="/api/v1/notifications")
 
 
 @app.on_event("startup")

@@ -92,7 +92,7 @@ export function StorePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState<GameTag | 'all'>('all');
   const [sortBy, setSortBy] = useState<'popular' | 'rating' | 'newest' | 'price-low' | 'price-high'>('popular');
-  const [maxPrice, setMaxPrice] = useState(100);
+  const [maxPrice, setMaxPrice] = useState<number | null>(null);
   const dealsScrollRef = useRef<HTMLDivElement | null>(null);
 
   const heroBanners = [
@@ -203,7 +203,7 @@ export function StorePage() {
       return [];
     }
     try {
-      return gamesResponse.games.map((game: any) => {
+      let mappedGames = gamesResponse.games.map((game: any) => {
         if (!game || !game.id) return null;
         const stats = statsMap.get(String(game.id));
         const mapped = mapApiGameToGame({
@@ -232,11 +232,21 @@ export function StorePage() {
         }
         return mapped;
       }).filter((game): game is StoreGame => game !== null);
+
+      // Apply client-side filters (tag, max price) for safety
+      if (selectedTag !== 'all') {
+        mappedGames = mappedGames.filter(g => g.tags.includes(selectedTag));
+      }
+      if (maxPrice !== null) {
+        mappedGames = mappedGames.filter(g => g.price <= maxPrice);
+      }
+
+      return mappedGames;
     } catch (error) {
       console.error('Error mapping games:', error);
       return [];
     }
-  }, [gamesResponse, statsMap]);
+  }, [gamesResponse, statsMap, selectedTag, maxPrice]);
   
   const mappedOnSaleGames = useMemo(() => {
     if (!onSaleGames || !Array.isArray(onSaleGames)) return [];
@@ -298,12 +308,12 @@ export function StorePage() {
   }
   
   const allTags: GameTag[] = ['Action', 'RPG', 'Strategy', 'Indie', 'Shooter', 'Adventure'];
-  const hasActiveFilters = searchQuery || selectedTag !== 'all' || maxPrice < 100;
+  const hasActiveFilters = searchQuery || selectedTag !== 'all' || maxPrice !== null;
   
   const clearFilters = () => {
     setSearchQuery('');
     setSelectedTag('all');
-    setMaxPrice(100);
+    setMaxPrice(null);
     setSortBy('popular');
   };
   
@@ -392,20 +402,6 @@ export function StorePage() {
             </button>
           </div>
           
-          {/* Price Slider */}
-          <div className="flex items-center gap-2 min-w-[140px]">
-            <span className="text-xs text-gray-500">Max:</span>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="5"
-              value={maxPrice}
-              onChange={(e) => setMaxPrice(Number(e.target.value))}
-              className="flex-1 h-1.5 bg-void-600 rounded-full appearance-none cursor-pointer accent-blood-500"
-            />
-            <span className="text-xs font-mono text-gray-400 w-8">${maxPrice}</span>
-          </div>
           
           {/* Clear Filters */}
           {hasActiveFilters && (

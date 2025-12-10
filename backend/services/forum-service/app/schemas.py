@@ -33,6 +33,8 @@ class ForumPostResponse(ForumPostBase):
     id: int
     uuid: str
     user_id: str
+    author_username: str | None = None
+    author_avatar_url: str | None = None
     slug: str
     status: str
     is_pinned: bool
@@ -61,6 +63,8 @@ class ForumReplyResponse(ForumReplyBase):
     uuid: str
     post_id: int
     user_id: str
+    author_username: str | None = None
+    author_avatar_url: str | None = None
     likes: int
     is_edited: bool
     created_at: datetime

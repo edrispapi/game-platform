@@ -22,6 +22,7 @@ class UserBase(BaseModel):
     bio: Optional[str] = None
     location: Optional[str] = Field(None, max_length=100)
     website: Optional[str] = Field(None, max_length=255)
+    avatar_url: Optional[str] = Field(None, max_length=500)
     country_code: Optional[str] = Field(None, max_length=2)
     language_code: str = Field(default="en", max_length=5)
 

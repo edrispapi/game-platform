@@ -174,40 +174,43 @@ async def get_game_by_slug(
     Falls back to title matching if slug doesn't exist in database.
     """
     try:
+        # If the slug is numeric, treat it directly as an ID for robustness
+        if slug.isdigit():
+            game_id_int = int(slug)
+            return await service.get_game(game_id_int)
+
         # Convert slug back to title for matching
         # Handle both "cyberpunk-2077" and "cyberpunk 2077" formats
         title_from_slug = slug.replace('-', ' ').replace('_', ' ')
         
-        # Try to find game by exact title match (case-insensitive) and fetch requirements in one query
+        # Try to find game by exact title match (case-insensitive)
         from sqlalchemy import text
         result = await session.execute(
             text("""
-                SELECT id, pc_requirements, mac_requirements, linux_requirements
+                SELECT id
                 FROM games 
                 WHERE LOWER(TRIM(title)) = LOWER(TRIM(:title))
                 LIMIT 1
             """),
             {"title": title_from_slug}
         )
-        row = result.mappings().first()
+        game_id = result.scalar_one_or_none()
         
         # If exact match not found, try normalized matching (remove special chars)
-        if not row:
-            # Normalize both slug and title by removing special characters
+        if game_id is None:
             normalized_slug = title_from_slug.lower().replace(':', '').replace('-', ' ').replace('_', ' ').strip()
             result2 = await session.execute(
                 text("""
-                    SELECT id, pc_requirements, mac_requirements, linux_requirements
+                    SELECT id
                     FROM games 
                     WHERE LOWER(REPLACE(REPLACE(REPLACE(TRIM(title), ':', ''), '-', ' '), '_', ' ')) = :normalized
                     LIMIT 1
                 """),
                 {"normalized": normalized_slug}
             )
-            row = result2.mappings().first()
+            game_id = result2.scalar_one_or_none()
         
-        if row:
-            game_id = row['id'] if isinstance(row, dict) else row[0]
+        if game_id is not None:
             game = await service.get_game(game_id)
             
             # Fetch requirements separately using raw SQL with explicit text cast
@@ -556,14 +559,6 @@ async def get_game_icons(
         icons.extend([row[0] for row in result2 if row[0]])
     
     return {"icons": icons, "count": len(icons)}
-
-
-    payload: TagCreate, service: CatalogService = Depends(get_catalog_service)
-):
-    try:
-        return await service.create_tag(payload)
-    except ServiceError as exc:
-        raise _http_error(exc)
 
 
 @router.get("/tags", response_model=List[TagResponse])

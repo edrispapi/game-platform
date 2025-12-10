@@ -20,13 +20,21 @@ const Avatar = React.forwardRef<
 ))
 Avatar.displayName = AvatarPrimitive.Root.displayName
 
+const DEFAULT_AVATAR = "/images/default-avatar.svg"
+
 const AvatarImage = React.forwardRef<
   React.ElementRef<typeof AvatarPrimitive.Image>,
   React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Image>
->(({ className, ...props }, ref) => (
+>(({ className, onError, ...props }, ref) => (
   <AvatarPrimitive.Image
     ref={ref}
     className={cn("aspect-square h-full w-full", className)}
+    onError={(e) => {
+      const img = e.currentTarget as HTMLImageElement
+      if (img.src.endsWith(DEFAULT_AVATAR)) return
+      img.src = DEFAULT_AVATAR
+      onError?.(e)
+    }}
     {...props}
   />
 ))
