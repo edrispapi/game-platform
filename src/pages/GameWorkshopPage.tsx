@@ -11,15 +11,36 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Download, Star, Calendar, User, ArrowLeft, Plus, Filter, Search, TrendingUp, Sparkles, Heart, Upload, File, Image as ImageIcon } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { gamesApi, workshopApi, getAuthToken, type GameResponse, type WorkshopItemResponse } from "@/lib/api-client";
+import {
+  gamesApi,
+  workshopApi,
+  getAuthToken,
+  type GameResponse,
+  type WorkshopItemResponse,
+  type WorkshopItemCreate,
+  type WorkshopComment,
+  type WorkshopRatingSummary,
+} from "@/lib/api-client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { UserLink } from "@/components/UserLink";
 import { WebGLImage } from "@/components/WebGLImage";
-import { generateWorkshopBanner } from "@/utils/workshop-banner";
 import { CommentReactions } from "@/components/CommentReactions";
+const defaultWorkshopFallback = "/images/default-workshop.svg";
+const isOrbUnsafe = (url: string | undefined) =>
+  !!url && (url.includes("picsum.photos") || url.includes("800x450/?"));
+const isUserUploadedImage = (url: string | undefined) => {
+  if (!url) return false;
+  if (url.startsWith("data:") || url.startsWith("file:")) return true;
+  try {
+    const resolved = new URL(url, window.location.origin);
+    return resolved.origin === window.location.origin;
+  } catch {
+    return false;
+  }
+};
 
 interface WorkshopItemView {
   id: number;
@@ -27,12 +48,15 @@ interface WorkshopItemView {
   description: string;
   downloads: number;
   rating: number;
+  ratingCount?: number;
   createdAt: number;
   type: 'mod' | 'skin' | 'map' | 'tool';
   image?: string;
   fileUrl?: string;
   featured?: boolean;
   author: string;
+  author_username?: string | null;
+  author_avatar_url?: string | null;
   authorAvatar?: string;
   tags: string[];
   favoritesCount?: number;
@@ -40,10 +64,11 @@ interface WorkshopItemView {
 }
 
 function mapWorkshopItem(api: WorkshopItemResponse): WorkshopItemView {
-  // Approximate rating from votes_up/down (scale 0-5)
+  // Prefer backend rating; fallback to votes ratio
   const totalVotes = api.votes_up + api.votes_down;
   const ratio = totalVotes > 0 ? api.votes_up / totalVotes : 0;
-  const rating = Math.round(ratio * 5 * 10) / 10;
+  const fallbackRating = Math.round(ratio * 5 * 10) / 10;
+  const rating = typeof api.rating_avg === 'number' ? api.rating_avg : fallbackRating;
 
   // Derive type from tags if possible, otherwise default to 'mod'
   const lowerTags = (api.tags || []).map(t => t.toLowerCase());
@@ -64,10 +89,13 @@ function mapWorkshopItem(api: WorkshopItemResponse): WorkshopItemView {
     fileUrl: api.file_url || undefined,
     featured: (api.tags || []).includes('featured'),
     author: api.user_id ? `user-${api.user_id}` : 'Unknown Creator',
+    author_username: api.author_username || null,
+    author_avatar_url: api.author_avatar_url || null,
     authorAvatar: undefined,
     tags: api.tags || [],
     favoritesCount: api.votes_up,
     favorited: false,
+    ratingCount: api.rating_count ?? totalVotes ?? 0,
   };
 }
 
@@ -85,6 +113,8 @@ export function GameWorkshopPage() {
   const [uploadType, setUploadType] = useState<'mod' | 'skin' | 'map' | 'tool'>('mod');
   const [selectedItem, setSelectedItem] = useState<WorkshopItemView | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  const [ratingScore, setRatingScore] = useState<number>(0);
   const isAuthed = !!getAuthToken();
   const queryClient = useQueryClient();
 
@@ -100,7 +130,13 @@ export function GameWorkshopPage() {
 
   const { data: itemsResponse, isLoading: isLoadingItems } = useQuery({
     queryKey: ['workshop-items', slug],
-    queryFn: () => workshopApi.list(slug ? slug.replace(/-/g, ' ') : undefined),
+    queryFn: () =>
+      workshopApi.list(
+        undefined, // search
+        undefined, // status
+        undefined, // visibility
+        slug // game filter
+      ),
     enabled: !!slug,
   });
 
@@ -113,12 +149,30 @@ export function GameWorkshopPage() {
     return true;
   };
 
+  const updateCachedItems = (itemId: number, updater: (item: any) => any) => {
+    queryClient.setQueryData(['workshop-items', slug], (data: any) => {
+      if (!data?.items) return data;
+      return {
+        ...data,
+        items: data.items.map((it: any) => (it.id === itemId ? updater(it) : it)),
+      };
+    });
+  };
+
   const downloadMutation = useMutation({
-    mutationFn: async (itemId: number) => {
-      return workshopApi.download(itemId);
+    mutationFn: async (itemId: number) => workshopApi.download(itemId),
+    onMutate: async (itemId) => {
+      await queryClient.cancelQueries({ queryKey: ['workshop-items', slug] });
+      const prev = queryClient.getQueryData(['workshop-items', slug]);
+      updateCachedItems(itemId, (it) => ({ ...it, downloads: (it.downloads || 0) + 1 }));
+      return { prev };
+    },
+    onError: (error, _itemId, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(['workshop-items', slug], ctx.prev);
+      toast.error(`Failed to download: ${error instanceof Error ? error.message : 'Unknown error'}`);
     },
     onSuccess: (data, itemId) => {
-      const item = allItems.find(i => i.id === itemId);
+      const item = allItems.find((i) => i.id === itemId);
       const downloadUrl = data.download_url || item?.fileUrl;
 
       if (downloadUrl && (downloadUrl.startsWith('http') || downloadUrl.startsWith('data:'))) {
@@ -136,21 +190,32 @@ export function GameWorkshopPage() {
       } else {
         toast.success('Download registered!');
       }
-      queryClient.invalidateQueries({ queryKey: ['workshop-items', slug] });
     },
-    onError: (error: Error) => {
-      toast.error(`Failed to download: ${error.message}`);
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['workshop-items', slug] });
     },
   });
 
   const favoriteMutation = useMutation({
     mutationFn: (itemId: number) => workshopApi.vote(itemId, true),
+    onMutate: async (itemId) => {
+      await queryClient.cancelQueries({ queryKey: ['workshop-items', slug] });
+      const prev = queryClient.getQueryData(['workshop-items', slug]);
+      updateCachedItems(itemId, (it) => ({
+        ...it,
+        votes_up: (it.votes_up || 0) + 1,
+      }));
+      return { prev };
+    },
+    onError: (error, _itemId, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(['workshop-items', slug], ctx.prev);
+      toast.error(`Failed to update vote: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    },
     onSuccess: () => {
       toast.success('Thanks for the upvote!');
-      queryClient.invalidateQueries({ queryKey: ['workshop-items', slug] });
     },
-    onError: (error: Error) => {
-      toast.error(`Failed to update vote: ${error.message}`);
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['workshop-items', slug] });
     },
   });
 
@@ -185,12 +250,22 @@ export function GameWorkshopPage() {
     return b.rating - a.rating;
   });
 
-  const featuredItems = filteredItems.filter(item => item.featured);
-  const regularItems = filteredItems.filter(item => !item.featured);
+  const featuredRanked = filteredItems
+    .slice()
+    .sort(
+      (a, b) =>
+        (b.downloads + (b.favoritesCount || 0) * 2 + b.rating * 10) -
+        (a.downloads + (a.favoritesCount || 0) * 2 + a.rating * 10)
+    )
+    .slice(0, 3);
+  const featuredIds = new Set(featuredRanked.map((i) => i.id));
+  const regularItems = filteredItems.filter((item) => !featuredIds.has(item.id));
 
   const openDetail = (item: WorkshopItemView) => {
     setSelectedItem(item);
     setIsDetailOpen(true);
+    setRatingScore(0);
+    setCommentText('');
   };
 
   const handleReaction = (label: string) => {
@@ -201,31 +276,45 @@ export function GameWorkshopPage() {
   const uploadMutation = useMutation({
     mutationFn: async () => {
       if (!slug) throw new Error('Game slug is required');
+      if (!uploadTitle.trim() || !uploadDescription.trim()) {
+        throw new Error('Title and description are required');
+      }
       const tags = uploadTags
         .split(',')
-        .map(tag => tag.trim())
+        .map((tag: string) => tag.trim())
         .filter(Boolean);
-
-      // Handle file upload if present
-      let fileUrl = uploadFileUrl;
-      if (uploadFile) {
-        try {
-          fileUrl = await handleFileUpload(uploadFile);
-        } catch (error) {
-          console.error('File upload error:', error);
-          toast.error('Failed to upload file. Continuing without file...');
-        }
+      // include type as a tag for filtering
+      if (uploadType) {
+        tags.push(uploadType);
       }
 
-      return workshopApi.create({
+      const payload: WorkshopItemCreate = {
         title: uploadTitle,
         description: uploadDescription,
-        type: uploadType,
         visibility: 'public',
         tags,
         game_id: slug,
-        file_url: fileUrl || undefined,
         thumbnail_url: uploadImage || undefined,
+      };
+
+      if (uploadFile) {
+        // Use upload endpoint to avoid base64 size limits
+        return workshopApi.createWithUpload(payload, uploadFile);
+      }
+
+      // URL-only submission with length guard
+      let fileUrl = uploadFileUrl;
+      if (fileUrl && fileUrl.length > 480) {
+        toast.error('File URL is too large. Please provide a smaller file or an external link.');
+        fileUrl = '';
+      }
+      if (uploadImage && uploadImage.length > 480) {
+        toast.error('Thumbnail URL is too large. Please use a shorter image URL.');
+      }
+
+      return workshopApi.create({
+        ...payload,
+        file_url: fileUrl || undefined,
       });
     },
     onSuccess: () => {
@@ -242,6 +331,51 @@ export function GameWorkshopPage() {
     onError: (error: Error) => {
       toast.error(`Failed to upload item: ${error.message}`);
     },
+  });
+
+  const commentsQuery = useQuery({
+    queryKey: ['workshop-comments', selectedItem?.id],
+    enabled: !!selectedItem?.id,
+    queryFn: () => workshopApi.listComments(selectedItem!.id, 100, 0),
+  });
+
+  const ratingQuery = useQuery<WorkshopRatingSummary>({
+    queryKey: ['workshop-rating', selectedItem?.id],
+    enabled: !!selectedItem?.id,
+    queryFn: () => workshopApi.getRating(selectedItem!.id),
+  });
+
+  const addCommentMutation = useMutation({
+    mutationFn: (content: string) => {
+      if (!selectedItem) throw new Error('No item');
+      return workshopApi.addComment(selectedItem.id, content);
+    },
+    onSuccess: () => {
+      setCommentText('');
+      queryClient.invalidateQueries({ queryKey: ['workshop-comments', selectedItem?.id] });
+    },
+    onError: (error: Error) => toast.error(`Failed to post comment: ${error.message}`),
+  });
+
+  const setRatingMutation = useMutation({
+    mutationFn: (score: number) => {
+      if (!selectedItem) throw new Error('No item');
+      return workshopApi.setRating(selectedItem.id, score);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workshop-rating', selectedItem?.id] });
+    },
+    onError: (error: Error) => toast.error(`Failed to rate: ${error.message}`),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (itemId: number) => workshopApi.delete(itemId),
+    onSuccess: () => {
+      toast.success('Item deleted');
+      setIsDetailOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['workshop-items', slug] });
+    },
+    onError: (error: Error) => toast.error(`Failed to delete: ${error.message}`),
   });
 
   if (isLoadingGame) {
@@ -314,41 +448,30 @@ export function GameWorkshopPage() {
             </div>
           ) : (
             <>
-          {featuredItems.length > 0 && (
+          {featuredRanked.length > 0 && (
             <div>
               <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
                 <Sparkles className="h-6 w-6 text-yellow-500" />
                 Featured Creations
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {featuredItems.map(item => (
-                  <Card 
-                    key={item.id} 
+                {featuredRanked.map((item) => (
+                  <Card
+                    key={item.id}
                     className="bg-void-800 border-void-700 hover:border-blood-500/50 transition-colors group cursor-pointer"
                     onClick={() => openDetail(item)}
                   >
                     <div className="relative h-48 overflow-hidden rounded-t-lg bg-void-700">
-                      {(() => {
-                        const bannerUrl = item.image && !item.image.includes('storage.example.com') 
-                          ? item.image 
-                          : generateWorkshopBanner(item.title, item.type, String(item.id));
-                        return (
-                          <img 
-                            src={bannerUrl} 
-                            alt={item.title} 
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              // Fallback to generated banner if image fails
-                              const fallbackUrl = generateWorkshopBanner(item.title, item.type, String(item.id));
-                              if ((e.target as HTMLImageElement).src !== fallbackUrl) {
-                                (e.target as HTMLImageElement).src = fallbackUrl;
-                              } else {
-                                (e.target as HTMLImageElement).src = '/images/default-workshop.svg';
-                              }
-                            }}
-                          />
-                        );
-                      })()}
+                      <WebGLImage
+                        src={
+                          isUserUploadedImage(item.image) && !isOrbUnsafe(item.image)
+                            ? (item.image as string)
+                            : defaultWorkshopFallback
+                        }
+                        alt={item.title}
+                        className="w-full h-full object-cover"
+                        fallback={defaultWorkshopFallback}
+                      />
                       <Badge className="absolute top-2 right-2 bg-yellow-600">Featured</Badge>
                     </div>
                     <CardHeader>
@@ -417,7 +540,7 @@ export function GameWorkshopPage() {
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2 mt-3">
-                        {item.tags.map(tag => (
+                        {item.tags.map((tag: string) => (
                           <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
                         ))}
                       </div>
@@ -438,21 +561,18 @@ export function GameWorkshopPage() {
                   className="bg-void-800 border border-void-700/70 hover:border-blood-500/60 transition-all hover:-translate-y-1 shadow-lg shadow-black/30 cursor-pointer"
                   onClick={() => openDetail(item)}
                 >
-                  <div className="relative h-40 overflow-hidden rounded-t-lg bg-void-700">
-                    {(() => {
-                      const bannerUrl = item.image && !item.image.includes('storage.example.com') 
-                        ? item.image 
-                        : generateWorkshopBanner(item.title, item.type, String(item.id));
-                      return (
-                        <WebGLImage 
-                          src={bannerUrl} 
-                          alt={item.title} 
-                          className="w-full h-full object-cover"
-                          fallback={generateWorkshopBanner(item.title, item.type, String(item.id))}
-                        />
-                      );
-                    })()}
-                  </div>
+                    <div className="relative h-40 overflow-hidden rounded-t-lg bg-void-700">
+                      <WebGLImage
+                        src={
+                          isUserUploadedImage(item.image) && !isOrbUnsafe(item.image)
+                            ? (item.image as string)
+                            : defaultWorkshopFallback
+                        }
+                        alt={item.title}
+                        className="w-full h-full object-cover"
+                        fallback={defaultWorkshopFallback}
+                      />
+                    </div>
                   <CardHeader>
                     <div className="flex items-start justify-between mb-2">
                       <Badge variant="secondary">{item.type}</Badge>
@@ -468,11 +588,14 @@ export function GameWorkshopPage() {
                     <div className="flex items-center justify-between text-xs text-gray-500 mb-4">
                       <div className="flex items-center gap-2">
                         <Avatar className="h-5 w-5">
-                          <AvatarImage src={item.authorAvatar} />
-                          <AvatarFallback>{(item.author || '??').substring(0, 2).toUpperCase()}</AvatarFallback>
+                          <AvatarImage src={item.authorAvatar || item.author_avatar_url || undefined} />
+                          <AvatarFallback>{(item.author || item.author_username || '??').substring(0, 2).toUpperCase()}</AvatarFallback>
                         </Avatar>
-                        <UserLink username={item.author || 'unknown'}>
-                          {item.author || 'Unknown Creator'}
+                        <UserLink username={(item.author_username || item.author || 'unknown') || 'unknown'}>
+                          {item.author_username || item.author || 'Unknown Creator'}
+                        </UserLink>
+                        <UserLink username={item.author_username || item.author || 'unknown'}>
+                          {item.author_username || item.author || 'Unknown Creator'}
                         </UserLink>
                       </div>
                       <span>{formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</span>
@@ -546,21 +669,24 @@ export function GameWorkshopPage() {
                 <Skeleton key={i} className="h-64 w-full rounded-lg" />
               ))}
             </div>
-          ) : featuredItems.length > 0 ? (
+          ) : featuredRanked.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {featuredItems.map(item => (
+            {featuredRanked.map((item) => (
               <Card key={item.id} className="bg-void-800 border-void-700 hover:border-blood-500/50 transition-colors">
                 <div className="relative h-48 overflow-hidden rounded-t-lg bg-void-700">
                     {(() => {
-                      const bannerUrl = item.image && !item.image.includes('storage.example.com') 
-                        ? item.image 
-                        : generateWorkshopBanner(item.title, item.type, String(item.id));
+                      const bannerUrl =
+                        item.image &&
+                        !item.image.includes('storage.example.com') &&
+                        !isOrbUnsafe(item.image)
+                          ? item.image
+                          : defaultWorkshopFallback;
                     return (
                       <WebGLImage 
                         src={bannerUrl} 
                         alt={item.title} 
                         className="w-full h-full object-cover"
-                        fallback={generateWorkshopBanner(item.title, item.type, String(item.id))}
+                        fallback={defaultWorkshopFallback}
                       />
                     );
                   })()}
@@ -783,8 +909,12 @@ export function GameWorkshopPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="relative rounded-xl overflow-hidden bg-void-800 border border-void-700">
                   <WebGLImage
-                    src={selectedItem.image || generateWorkshopBanner(selectedItem.title, selectedItem.type, String(selectedItem.id))}
-                    fallback={generateWorkshopBanner(selectedItem.title, selectedItem.type, String(selectedItem.id))}
+                    src={
+                      isUserUploadedImage(selectedItem.image) && !isOrbUnsafe(selectedItem.image)
+                        ? (selectedItem.image as string)
+                        : defaultWorkshopFallback
+                    }
+                    fallback={defaultWorkshopFallback}
                     alt={selectedItem.title}
                     className="w-full h-full object-cover min-h-[240px]"
                   />
@@ -792,12 +922,12 @@ export function GameWorkshopPage() {
                 <div className="space-y-3">
                   <div className="flex items-center gap-3 text-sm text-gray-300">
                     <Avatar className="h-9 w-9">
-                      <AvatarImage src={selectedItem.authorAvatar} />
-                      <AvatarFallback>{(selectedItem.author || '??').substring(0, 2).toUpperCase()}</AvatarFallback>
+                    <AvatarImage src={selectedItem.authorAvatar || selectedItem.author_avatar_url || undefined} />
+                    <AvatarFallback>{(selectedItem.author_username || selectedItem.author || '??').substring(0, 2).toUpperCase()}</AvatarFallback>
                     </Avatar>
                     <div>
-                      <UserLink username={selectedItem.author || 'unknown'}>
-                        {selectedItem.author || 'Unknown Creator'}
+                    <UserLink username={(selectedItem.author_username || selectedItem.author || 'unknown') || 'unknown'}>
+                      {selectedItem.author_username || selectedItem.author || 'Unknown Creator'}
                       </UserLink>
                       <div className="text-xs text-gray-500">
                         {formatDistanceToNow(new Date(selectedItem.createdAt), { addSuffix: true })}
@@ -847,6 +977,18 @@ export function GameWorkshopPage() {
                       <Heart className="mr-2 h-4 w-4" />
                       Like
                     </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => {
+                        if (!ensureAuthenticated()) return;
+                        deleteMutation.mutate(selectedItem.id);
+                      }}
+                      disabled={deleteMutation.isPending}
+                      className="ml-auto"
+                    >
+                      Delete (admin)
+                    </Button>
                     <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
                       <CommentReactions compact />
                       <button
@@ -873,6 +1015,81 @@ export function GameWorkshopPage() {
                       >
                         <span className="font-semibold text-white">Award</span>
                       </button>
+                    </div>
+                    <div className="rounded-lg border border-void-700 bg-void-800/80 p-3 w-full space-y-2">
+                      <h4 className="text-sm font-semibold">Ratings</h4>
+                      <div className="flex items-center gap-2 text-sm text-gray-300">
+                        <Star className="h-4 w-4 fill-current text-yellow-500" />
+                        <span>
+                          {ratingQuery.data?.rating_avg
+                            ? `${ratingQuery.data.rating_avg.toFixed(1)} (${ratingQuery.data.rating_count})`
+                            : 'No ratings yet'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 text-yellow-500">
+                        {[1, 2, 3, 4, 5].map((i) => (
+                          <button
+                            key={i}
+                            disabled={setRatingMutation.isPending}
+                            onClick={() => {
+                              if (!ensureAuthenticated()) return;
+                              setRatingScore(i);
+                              setRatingMutation.mutate(i);
+                            }}
+                            className="p-1"
+                            title={`Rate ${i}`}
+                          >
+                            <Star
+                              className={`h-5 w-5 ${
+                                (ratingScore || ratingQuery.data?.rating_avg || 0) >= i ? 'opacity-100' : 'opacity-50'
+                              }`}
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-void-700 bg-void-800/80 p-3 w-full space-y-3">
+                      <h4 className="text-sm font-semibold">Comments</h4>
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {commentsQuery.isLoading ? (
+                          <p className="text-xs text-gray-500">Loading comments...</p>
+                        ) : commentsQuery.data && commentsQuery.data.length > 0 ? (
+                          commentsQuery.data.map((c: WorkshopComment) => (
+                            <div key={c.id} className="rounded-md border border-void-700 bg-void-900/70 p-2">
+                              <div className="text-xs text-gray-500 flex justify-between">
+                                <span>User {c.user_id}</span>
+                                <span>{formatDistanceToNow(new Date(c.created_at), { addSuffix: true })}</span>
+                              </div>
+                              <p className="text-sm text-gray-200 mt-1 whitespace-pre-wrap">{c.content}</p>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-xs text-gray-500">No comments yet.</p>
+                        )}
+                      </div>
+                      <Textarea
+                        placeholder="Add a comment"
+                        value={commentText}
+                        onChange={(e) => setCommentText(e.target.value)}
+                        className="bg-void-900 border-void-700 text-sm"
+                        disabled={addCommentMutation.isPending}
+                      />
+                      <div className="flex justify-end">
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            if (!ensureAuthenticated()) return;
+                            if (!commentText.trim()) {
+                              toast.error('Comment cannot be empty');
+                              return;
+                            }
+                            addCommentMutation.mutate(commentText.trim());
+                          }}
+                          disabled={addCommentMutation.isPending}
+                        >
+                          Post Comment
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -38,6 +38,8 @@ class WorkshopItemResponse(WorkshopItemBase):
     id: int
     uuid: str
     user_id: str
+    author_username: Optional[str] = None
+    author_avatar_url: Optional[str] = None
     slug: str
     status: WorkshopItemStatus
     auto_flagged: bool
@@ -48,6 +50,9 @@ class WorkshopItemResponse(WorkshopItemBase):
     downloads: int
     votes_up: int
     votes_down: int
+    rating_avg: Optional[float] = None
+    rating_count: Optional[int] = None
+    comment_count: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
@@ -72,6 +77,30 @@ class WorkshopListResponse(BaseModel):
 class WorkshopDownloadResponse(BaseModel):
     download_url: str
     downloads: int
+
+
+class WorkshopCommentCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=4000)
+
+
+class WorkshopCommentResponse(BaseModel):
+    id: int
+    item_id: int
+    user_id: str
+    content: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WorkshopRatingCreate(BaseModel):
+    score: int = Field(..., ge=1, le=5)
+
+
+class WorkshopRatingSummary(BaseModel):
+    item_id: int
+    rating_avg: Optional[float] = None
+    rating_count: int = 0
 
 
 class AutoModerationResult(BaseModel):

@@ -594,6 +594,8 @@ export const achievementsApi = {
 export interface WorkshopItemResponse {
   id: number;
   user_id: string;
+  author_username?: string | null;
+  author_avatar_url?: string | null;
   title: string;
   description: string;
   tags?: string[];
@@ -606,6 +608,8 @@ export interface WorkshopItemResponse {
   downloads: number;
   votes_up: number;
   votes_down: number;
+  rating_avg?: number | null;
+  rating_count?: number;
   created_at: string;
   updated_at: string;
 }
@@ -613,7 +617,6 @@ export interface WorkshopItemResponse {
 export interface WorkshopItemCreate {
   title: string;
   description: string;
-  type?: string;
   visibility?: string;
   tags?: string[];
   game_id?: string;
@@ -621,12 +624,34 @@ export interface WorkshopItemCreate {
   thumbnail_url?: string;
 }
 
+export interface WorkshopComment {
+  id: number;
+  item_id: number;
+  user_id: string;
+  content: string;
+  created_at: string;
+}
+
+export interface WorkshopRatingSummary {
+  item_id: number;
+  rating_avg?: number;
+  rating_count: number;
+}
+
 export const workshopApi = {
-  list: (search?: string, status?: string, visibility?: string, limit = 20, offset = 0) => {
+  list: (
+    search?: string,
+    status?: string,
+    visibility?: string,
+    gameId?: string,
+    limit = 20,
+    offset = 0
+  ) => {
     const params = new URLSearchParams();
     if (search) params.set('search', search);
     if (status) params.set('status_filter', status);
     if (visibility) params.set('visibility', visibility);
+    if (gameId) params.set('game_id', gameId);
     params.set('limit', String(limit));
     params.set('offset', String(offset));
     return api<{ items: WorkshopItemResponse[]; total: number }>(
@@ -642,6 +667,16 @@ export const workshopApi = {
       body: JSON.stringify(data),
     }),
 
+  createWithUpload: (data: WorkshopItemCreate, file: File) => {
+    const form = new FormData();
+    form.append('metadata', JSON.stringify(data));
+    form.append('file', file);
+    return api<WorkshopItemResponse>('/api/v1/workshop/items/upload', {
+      method: 'POST',
+      body: form,
+    });
+  },
+
   vote: (itemId: number, isUpvote: boolean) =>
     api<WorkshopItemResponse>(`/api/v1/workshop/items/${itemId}/votes`, {
       method: 'POST',
@@ -651,6 +686,31 @@ export const workshopApi = {
   download: (itemId: number) =>
     api<{ download_url: string; downloads: number }>(`/api/v1/workshop/items/${itemId}/download`, {
       method: 'POST',
+    }),
+
+  delete: (itemId: number) =>
+    api<void>(`/api/v1/workshop/items/${itemId}`, {
+      method: 'DELETE',
+    }),
+
+  listComments: (itemId: number, limit = 50, offset = 0) =>
+    api<WorkshopComment[]>(
+      `/api/v1/workshop/items/${itemId}/comments?limit=${limit}&offset=${offset}`
+    ),
+
+  addComment: (itemId: number, content: string) =>
+    api<WorkshopComment>(`/api/v1/workshop/items/${itemId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    }),
+
+  getRating: (itemId: number) =>
+    api<WorkshopRatingSummary>(`/api/v1/workshop/items/${itemId}/ratings`),
+
+  setRating: (itemId: number, score: number) =>
+    api<WorkshopRatingSummary>(`/api/v1/workshop/items/${itemId}/ratings`, {
+      method: 'POST',
+      body: JSON.stringify({ score }),
     }),
 };
 

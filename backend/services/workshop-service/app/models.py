@@ -118,3 +118,27 @@ class WorkshopModerationLog(Base):
 
     item = relationship("WorkshopItem", back_populates="moderation_events")
 
+
+class WorkshopComment(Base):
+    __tablename__ = "workshop_comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    item_id = Column(Integer, ForeignKey("workshop_items.id"), nullable=False, index=True)
+    user_id = Column(String(64), nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class WorkshopRating(Base):
+    __tablename__ = "workshop_ratings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    item_id = Column(Integer, ForeignKey("workshop_items.id"), nullable=False, index=True)
+    user_id = Column(String(64), nullable=False, index=True)
+    score = Column(Integer, nullable=False)  # 1-5
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("item_id", "user_id", name="uq_workshop_rating_item_user"),
+    )
+
