@@ -73,7 +73,7 @@ services:
     environment:
       <<: *minio-env
       USER_DATABASE_URL: postgresql://crimson:crimson123@postgres:5432/user_service
-      SECRET_KEY: 359919ea6e72b1e135c192f503cbc752f3eb09aa3109b9136b30ffffa6f5152a
+      SECRET_KEY: ${USER_SERVICE_SECRET_KEY:?set USER_SERVICE_SECRET_KEY}
       ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
     depends_on:
       postgres:
@@ -299,7 +299,7 @@ services:
     container_name: crimson-friends-chat-service
     environment:
       PROJECT_NAME: Friends & Chat
-      SECRET_KEY: 359919ea6e72b1e135c192f503cbc752f3eb09aa3109b9136b30ffffa6f5152a
+      SECRET_KEY: ${FRIENDS_CHAT_SECRET_KEY:?set FRIENDS_CHAT_SECRET_KEY}
       JWT_ALGORITHM: HS256
       ALLOWED_ORIGINS: http://localhost:3000,http://localhost:13000,http://frontend:3000
       MONGO_URL: mongodb://mongo:27017

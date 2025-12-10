@@ -80,7 +80,7 @@ async def register_user(
 
 @router.get("/by-id/{user_id}", response_model=UserResponse)
 async def get_user_by_id(
-    user_id: int,
+    user_id: str,
     service: UserService = Depends(get_user_service),
 ) -> User:
     try:

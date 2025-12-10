@@ -42,8 +42,8 @@ export function NotificationsPage() {
       toast.error("Failed to mark notification as read.");
     }
   });
-  const getIcon = (type: string) => {
-    switch (type) {
+  const getIcon = (category: string) => {
+    switch (category) {
       case 'friend-request':
         return <UserPlus className="h-6 w-6 text-blue-400" />;
       case 'achievement':
@@ -82,7 +82,9 @@ export function NotificationsPage() {
                 !notif.is_read && "bg-void-700/50 border-blood-500/30"
               )}
             >
-              <div className="bg-void-900 p-2 rounded-full mt-1">{getIcon(notif.type)}</div>
+              <div className="bg-void-900 p-2 rounded-full mt-1">
+                {getIcon((notif as any).category || (notif as any).type || 'general')}
+              </div>
               <div className="flex-grow">
                 <p className="text-gray-200">{notif.message}</p>
                 <p className="text-sm text-gray-500 mt-1">

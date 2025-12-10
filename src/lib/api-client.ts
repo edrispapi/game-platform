@@ -533,7 +533,8 @@ export const chatApi = {
 export interface NotificationResponse {
   id: number;
   user_id: string;
-  type: string;
+  category: string; // backend uses 'category'
+  type?: string; // legacy compatibility
   title: string;
   message: string;
   is_read: boolean;

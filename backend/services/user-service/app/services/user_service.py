@@ -81,7 +81,7 @@ class UserService:
         await self.session.refresh(user)
         return user
 
-    async def get_by_id(self, user_id: int) -> User:
+    async def get_by_id(self, user_id: int | str) -> User:
         user = await self.users.get_by_id(user_id)
         if not user:
             raise NotFoundError("User not found")

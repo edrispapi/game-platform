@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Optional
+from uuid import UUID
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,9 +26,41 @@ class UserRepository:
         )
         return list(result.scalars().all())
 
-    async def get_by_id(self, user_id: int) -> Optional[User]:
-        result = await self.session.execute(select(User).where(User.id == user_id))
-        return result.scalar_one_or_none()
+    async def get_by_id(self, user_id: int | str) -> Optional[User]:
+        """
+        Fetch a user by numeric ID or UUID string.
+        Tries integer lookup first, then UUID lookup.
+        """
+        int_id: Optional[int] = None
+        uuid_id: Optional[UUID] = None
+
+        if isinstance(user_id, int):
+            int_id = user_id
+        else:
+            try:
+                int_id = int(str(user_id))
+            except (ValueError, TypeError):
+                int_id = None
+            try:
+                uuid_id = UUID(str(user_id))
+            except (ValueError, TypeError):
+                uuid_id = None
+
+        # Try by integer id
+        if int_id is not None:
+            result = await self.session.execute(select(User).where(User.id == int_id))
+            user = result.scalar_one_or_none()
+            if user:
+                return user
+
+        # Fallback to UUID
+        if uuid_id is not None:
+            result = await self.session.execute(select(User).where(User.uuid == uuid_id))
+            user = result.scalar_one_or_none()
+            if user:
+                return user
+
+        return None
 
     async def get_by_username(self, username: str) -> Optional[User]:
         result = await self.session.execute(select(User).where(User.username == username))
